@@ -123,7 +123,7 @@
         <item name="android:textColor">?android:attr/textColorPrimary</item>
     </style>
     <style name="Base.TextAppearance.AppCompat.SearchResult" parent="">
-        <item name="android:textStyle">0x0</item>
+        <item name="android:textStyle">normal</item>
         <item name="android:textColor">?android:attr/textColorPrimary</item>
         <item name="android:textColorHint">?android:attr/textColorHint</item>
     </style>
@@ -706,7 +706,7 @@
     <style name="Base.Widget.AppCompat.ActionBar.TabText" parent="">
         <item name="android:textAppearance">@style/TextAppearance.AppCompat.Medium</item>
         <item name="android:textSize">12sp</item>
-        <item name="android:textStyle">0x1</item>
+        <item name="android:textStyle">bold</item>
         <item name="android:textColor">?android:attr/textColorPrimary</item>
         <item name="android:ellipsize">4</item>
         <item name="android:maxWidth">180dp</item>
