@@ -1,0 +1,5 @@
+// No buildscript block – pluginManagement is in settings.gradle
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
