@@ -1,7 +1,6 @@
 package com.oblivionburn.nlp;
 
 import android.content.Context;
-import android.support.v7.widget.ActivityChooserView;
 import android.util.TypedValue;
 import android.view.MenuItem;
 

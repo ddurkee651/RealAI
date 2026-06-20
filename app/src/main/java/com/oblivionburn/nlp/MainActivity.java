@@ -225,7 +225,7 @@ public class MainActivity extends Activity
 
     private void initViews() {
         outputView = findViewById(R.id.txt_Output);
-        outputView.setMaxLines(ActivityChooserView.ActivityChooserViewAdapter.MAX_ACTIVITY_COUNT_UNLIMITED);
+        outputView.setMaxLines(Integer.MAX_VALUE);
         inputView = findViewById(R.id.txt_Input);
         menuButton = findViewById(R.id.btn_Menu);
         encourageButton = findViewById(R.id.btn_Encourage);
