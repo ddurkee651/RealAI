@@ -344,19 +344,7 @@ public final class Util {
     }
 
     public static String PunctuationFix_ForInput(String str) {
-        if (str == null || str.isEmpty()) return str;
-        StringBuilder sb = new StringBuilder(str);
-        // Insert spaces before punctuation marks if missing
-        for (int i = 0; i < sb.length(); i++) {
-            char c = sb.charAt(i);
-            if (c == '$' || c == '?' || c == '.' || c == '!' || c == ',' || c == ';') {
-                if (i == 0 || sb.charAt(i - 1) != ' ') {
-                    sb.insert(i, ' ');
-                    i++; // skip the inserted space
-                }
-            }
-        }
-        return sb.toString();
+        return str;
     }
 
     // ---- Topic and phrase related (simplified) ----
