@@ -13,12 +13,13 @@ import android.text.TextWatcher;
 import android.text.method.LinkMovementMethod;
 import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.inputmethod.InputMethodManager;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -32,10 +33,9 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Random;
 
 /**
- * Refactored MainActivity – Bluetooth removed.
+ * Refactored MainActivity – Bluetooth removed, Enter key fixed, menu fixed.
  */
 public class MainActivity extends Activity
         implements AdapterView.OnItemSelectedListener, TextToSpeech.OnInitListener {
@@ -134,6 +134,7 @@ public class MainActivity extends Activity
         startTimer();
         startThinking();
 
+        // Show tips on first run – you can remove this line if you prefer not to show tips on launch
         displayTips();
     }
 
@@ -230,6 +231,16 @@ public class MainActivity extends Activity
             }
         });
 
+        // Catch Enter key directly (physical keyboard)
+        inputView.setOnKeyListener((v, keyCode, event) -> {
+            if (keyCode == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN) {
+                onSend(v);
+                return true;
+            }
+            return false;
+        });
+
+        // Also catch the soft‑keyboard "Send" action
         inputView.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
                 onSend(v);
@@ -576,21 +587,26 @@ public class MainActivity extends Activity
 
     @Override
     public void onPanelClosed(int featureId, Menu menu) {
-        if (!isThoughtMode && !isTipsMode && !isWordFixMode && !isDelayMode && !isResponsesMode) {
+        // Always restore the main UI
+        outputView.setVisibility(View.VISIBLE);
+        inputView.setVisibility(View.VISIBLE);
+        menuButton.setText(R.string.menu_button);
+        menuButton.setVisibility(View.VISIBLE);
+        enableAdvancedUI(true);
+        startTimer();
+        startThinking();
+        showKeyboard();
+
+        // If we were in a sub‑mode, keep the appropriate view
+        if (isThoughtMode || isTipsMode) {
             outputView.setVisibility(View.VISIBLE);
-            inputView.setVisibility(View.VISIBLE);
-            menuButton.setText(R.string.menu_button);
-            menuButton.setVisibility(View.VISIBLE);
-            enableAdvancedUI(true);
-            startTimer();
-            startThinking();
         } else {
-            menuButton.setText(R.string.ok_button);
-            menuButton.setVisibility(View.VISIBLE);
-            if (isThoughtMode || isTipsMode) {
-                outputView.setVisibility(View.VISIBLE);
-            }
+            outputView.post(this::scrollHistory);
         }
+
+        // Invalidate the menu so it gets re‑created properly next time
+        invalidateOptionsMenu();
+
         super.onPanelClosed(featureId, menu);
     }
 
