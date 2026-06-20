@@ -71,7 +71,7 @@ public final class Data {
             if (config.createNewFile()) {
                 // Write default configuration
                 String defaultConfig =
-                        "Delay:10 seconds\n" +
+                        "Delay:90 seconds\n" +
                         "Advanced:false\n" +
                         "Topic Response Method:true\n" +
                         "Condition Response Method:true\n" +

@@ -18,6 +18,7 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.EditorInfo;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -230,7 +231,7 @@ public class MainActivity extends Activity
         });
 
         inputView.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == 6 || actionId == 5) {
+            if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
                 onSend(v);
                 return true;
             }

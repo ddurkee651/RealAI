@@ -33,6 +33,7 @@
     </com.oblivionburn.nlp.LiteText>
     <com.oblivionburn.nlp.LiteText
         android:id="@+id/txt_Input"
+        android:imeOptions="actionSend"
         android:longClickable="false"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
