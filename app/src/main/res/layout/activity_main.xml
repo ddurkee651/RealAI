@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:paddingLeft="@dimen/activity_horizontal_margin"
     android:paddingTop="@dimen/activity_vertical_margin"
     android:paddingRight="@dimen/activity_horizontal_margin"
@@ -7,13 +8,15 @@
     android:scrollbars="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
+
+    <!-- Output (chat log) -->
     <com.oblivionburn.nlp.LiteText
+        android:id="@+id/txt_Output"
         android:scrollbarAlwaysDrawVerticalTrack="true"
         android:scrollbarStyle="insideInset"
         android:gravity="top"
         android:autoLink="web"
         android:linksClickable="true"
-        android:id="@+id/txt_Output"
         android:focusable="false"
         android:focusableInTouchMode="false"
         android:scrollbars="vertical"
@@ -24,24 +27,43 @@
         android:scrollHorizontally="false"
         android:selectAllOnFocus="false"
         android:freezesText="false"
-        android:layout_above="@+id/txt_Input"
+        android:layout_above="@+id/input_row"
         android:layout_alignParentLeft="true"
         android:layout_alignParentTop="true"
         android:layout_alignParentRight="true"
         android:inputType="textMultiLine">
-        <requestFocus/>
+        <requestFocus />
     </com.oblivionburn.nlp.LiteText>
-    <com.oblivionburn.nlp.LiteText
-        android:id="@+id/txt_Input"
-        android:imeOptions="actionSend"
-        android:longClickable="false"
-        android:layout_width="wrap_content"
+
+    <!-- Input row: text field + Send button -->
+    <LinearLayout
+        android:id="@+id/input_row"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:ems="10"
+        android:orientation="horizontal"
         android:layout_above="@+id/btn_Discourage"
         android:layout_alignParentLeft="true"
-        android:layout_alignParentRight="true"
-        android:inputType="text"/>
+        android:layout_alignParentRight="true">
+
+        <com.oblivionburn.nlp.LiteText
+            android:id="@+id/txt_Input"
+            android:imeOptions="actionSend"
+            android:inputType="text"
+            android:longClickable="false"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ems="10" />
+
+        <Button
+            android:id="@+id/btn_Send"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Send"
+            android:onClick="onSend" />
+    </LinearLayout>
+
+    <!-- Discourage button -->
     <Button
         android:textSize="12sp"
         android:id="@+id/btn_Discourage"
@@ -53,6 +75,8 @@
         android:layout_above="@+id/btn_Menu"
         android:layout_alignParentLeft="true"
         android:onClick="Discourage"/>
+
+    <!-- Face image -->
     <ImageView
         android:id="@+id/img_Face"
         android:visibility="invisible"
@@ -62,6 +86,8 @@
         android:layout_toRightOf="@+id/btn_Discourage"
         android:layout_above="@+id/btn_Menu"
         app:srcCompat="@drawable/face_neutral"/>
+
+    <!-- Encourage button -->
     <Button
         android:textSize="12sp"
         android:id="@+id/btn_Encourage"
@@ -77,6 +103,8 @@
         android:layout_above="@+id/btn_Menu"
         android:layout_alignParentRight="true"
         android:onClick="Encourage"/>
+
+    <!-- Menu button -->
     <Button
         android:textSize="12sp"
         android:id="@+id/btn_Menu"
@@ -89,6 +117,8 @@
         android:layout_alignParentRight="true"
         android:layout_alignParentBottom="true"
         android:onClick="onMenu"/>
+
+    <!-- WordFix UI (hidden by default) -->
     <com.oblivionburn.nlp.LiteText
         android:id="@+id/txt_WordFix"
         android:focusable="false"
@@ -102,6 +132,7 @@
         android:layout_alignLeft="@+id/txt_Output"
         android:layout_alignRight="@+id/txt_Output"
         android:inputType="text"/>
+
     <Button
         android:id="@+id/btn_WordFix"
         android:focusable="false"
@@ -115,6 +146,7 @@
         android:layout_below="@+id/txt_WordFix"
         android:layout_centerHorizontal="true"
         android:onClick="WordFix"/>
+
     <Spinner
         android:id="@+id/sp_WordFix"
         android:focusable="false"
@@ -127,4 +159,5 @@
         android:layout_marginTop="84dp"
         android:layout_alignLeft="@+id/txt_Output"
         android:layout_alignTop="@+id/txt_Output"/>
+
 </RelativeLayout>
