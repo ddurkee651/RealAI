@@ -126,6 +126,8 @@ public class MainActivity extends Activity
         logic = new Logic();
         Util.init(logic);
 
+	respondRunnable = new RespondRunnable();
+
         tts = new TextToSpeech(getApplicationContext(), this);
 
         createBrainDirectories();
