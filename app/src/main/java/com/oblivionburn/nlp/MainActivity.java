@@ -2,14 +2,11 @@ package com.oblivionburn.nlp;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.Message;
 import android.speech.tts.TextToSpeech;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -28,8 +25,6 @@ import android.widget.ImageView;
 import android.widget.Spinner;
 import android.widget.Toast;
 
-import com.oblivionburn.nlp.BluetoothService;
-
 import java.io.File;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
@@ -37,20 +32,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
-import java.util.Set;
 
 /**
- * Refactored MainActivity – integrates instance‑based Logic,
- * Util.init() for memory, and hybrid memory+learning.
+ * Refactored MainActivity – Bluetooth removed.
  */
 public class MainActivity extends Activity
         implements AdapterView.OnItemSelectedListener, TextToSpeech.OnInitListener {
 
     private static final String TAG = "REALAI";
-    private static final int REQUEST_ENABLE_BT = 3;
-    private static final int REQUEST_CONNECT_DEVICE_SECURE = 1;
-    private static final int REQUEST_CONNECT_DEVICE_INSECURE = 2;
-
     private static final String EMPTY = "";
     private static final int DELAY_INTERVAL_MS = 2000;
 
@@ -66,8 +55,6 @@ public class MainActivity extends Activity
     private ImageView faceImageView;
 
     // Menus
-    private MenuItem miConnect;
-    private MenuItem miDisconnect;
     private MenuItem miNewSession;
     private MenuItem miThoughts;
     private MenuItem miTips;
@@ -88,25 +75,15 @@ public class MainActivity extends Activity
     private boolean isEncouragePressed = false;
     private boolean isDiscouragePressed = false;
     private boolean isBored = false;
-    private boolean isThinking = false;
-    private boolean isBluetoothEnabled = false;
-    private boolean isConnected = false;
 
     private int idleDelayCounter = 0;
     private int delaySelection = 0;
     private int responseSelection = 0;
     private int wordFixSelection = 0;
-    private int responseDelayCounter = 0;
-
-    private String connectedDeviceName = null;
-    private String receivedBluetoothMessage = EMPTY;
 
     // Core objects
     private Logic logic;
     private TextToSpeech tts;
-    private BluetoothAdapter bluetoothAdapter;
-    private BluetoothService bluetoothService;
-    private StringBuffer outStringBuffer;
 
     // Directories
     private File brainDir;
@@ -119,8 +96,8 @@ public class MainActivity extends Activity
     private ThoughtRunnable thoughtRunnable;
     private RespondRunnable respondRunnable;
 
-    // Bluetooth Handler
-    private final BluetoothHandler bluetoothHandler = new BluetoothHandler(this);
+    // Stored menu for dynamic updates
+    private Menu menu;
 
     // Static flags (used also by Util)
     public static boolean bl_DelayForever = false;
@@ -136,50 +113,27 @@ public class MainActivity extends Activity
         setRequestedOrientation(1);
         setContentView(R.layout.activity_main);
 
-        // ***** FIX #1: Initialize Data persistence *****
         Data.initData(this);
-
-        // ***** FIX #4: Load saved delay from config *****
         loadDelayFromConfig();
 
-        // Init UI
         initViews();
 
-        // Init directories
         brainDir = new File(getExternalFilesDir(null), "Brain");
         historyDir = new File(brainDir, "History");
         thoughtDir = new File(brainDir, "Thoughts");
 
-        // Init NLP logic (instance)
         logic = new Logic();
-        Util.init(logic);   // <-- CRITICAL: ties Util to this Logic instance
+        Util.init(logic);
 
-        // Init Text-to-Speech
         tts = new TextToSpeech(getApplicationContext(), this);
 
-        // Init Bluetooth
-        initBluetooth();
-
-        // Initialise brain files
         createBrainDirectories();
-
-        // Set up listeners
         setupListeners();
 
-        // Start timers
         startTimer();
         startThinking();
 
-        // Show tips on first run
         displayTips();
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (bluetoothService != null && bluetoothService.getState() == BluetoothService.STATE_NONE) {
-            bluetoothService.start();
-        }
     }
 
     @Override
@@ -196,9 +150,6 @@ public class MainActivity extends Activity
         stopThinking();
         mainHandler.removeCallbacksAndMessages(null);
 
-        if (bluetoothService != null) {
-            bluetoothService.stop();
-        }
         if (tts != null) {
             tts.stop();
             tts.shutdown();
@@ -236,34 +187,6 @@ public class MainActivity extends Activity
         faceImageView = findViewById(R.id.img_Face);
 
         wordFixSpinner.setOnItemSelectedListener(this);
-    }
-
-    private void initBluetooth() {
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        if (bluetoothAdapter != null && bluetoothAdapter.isEnabled()) {
-            Log.d(TAG, "Bluetooth enabled");
-            try {
-                outStringBuffer = new StringBuffer();
-                bluetoothService = new BluetoothService(this, bluetoothHandler);
-                bluetoothService.start();
-                connectToBondedDevice();
-                isBluetoothEnabled = true;
-                Toast.makeText(this, "Found bluetooth connection.", Toast.LENGTH_SHORT).show();
-            } catch (Exception e) {
-                Toast.makeText(this, "Failed to establish bluetooth connection.", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    private void connectToBondedDevice() {
-        if (bluetoothAdapter == null) return;
-        Set<BluetoothDevice> bonded = bluetoothAdapter.getBondedDevices();
-        for (BluetoothDevice device : bonded) {
-            if (device.getBluetoothClass().getDeviceClass() == 524) {
-                bluetoothService.connect(device, false);
-                return;
-            }
-        }
     }
 
     private void createBrainDirectories() {
@@ -328,7 +251,7 @@ public class MainActivity extends Activity
     }
 
     // ------------------------------------------------------------------------
-    // Handlers and Runnables (with weak refs)
+    // Handlers and Runnables
     // ------------------------------------------------------------------------
 
     private static class MainHandler extends Handler {
@@ -340,7 +263,6 @@ public class MainActivity extends Activity
         }
     }
 
-    // ***** FIX #3: TimerRunnable uses exact delay *****
     private class TimerRunnable implements Runnable {
         @Override
         public void run() {
@@ -357,9 +279,8 @@ public class MainActivity extends Activity
                 activity.idleDelayCounter++;
             }
 
-            // Use the user-selected delay if not infinite, otherwise a long default (60s)
             int delay = bl_DelayForever ? 60000 : int_Time;
-            if (delay <= 0) delay = 10000; // safety fallback
+            if (delay <= 0) delay = 10000;
             mainHandler.postDelayed(this, delay);
         }
     }
@@ -390,39 +311,10 @@ public class MainActivity extends Activity
             MainActivity activity = MainActivity.this;
             String input = activity.inputView.getText().toString();
 
-            // If no input, check for Bluetooth response
             if (input.length() == 0) {
-                if (activity.isConnected && activity.responseDelayCounter > 0) {
-                    if (activity.responseDelayCounter == 1) {
-                        String msg = activity.receivedBluetoothMessage;
-                        if (msg.length() > 0) {
-                            String[] tokens = logic.prepInput(msg);
-                            if (tokens != null && tokens.length > 0) {
-                                List<String> history = Data.getHistory();
-                                msg = Util.RulesCheck(msg);
-                                String response = logic.respond(tokens, msg);
-                                if (response != null && !response.equals(EMPTY)) {
-                                    history.add("AI: " + response);
-                                }
-                                if (logic.isSpeech()) {
-                                    activity.tts.speak(response, TextToSpeech.QUEUE_FLUSH, null, null);
-                                }
-                                Data.saveHistory(history);
-                                Util.CleanMemory(activity);
-                                activity.outputView.post(activity::scrollHistory);
-                                activity.sendBluetoothMessage(response);
-                                return;
-                            }
-                        }
-                    }
-                } else {
-                    activity.responseDelayCounter++;
-                    mainHandler.postDelayed(this, DELAY_INTERVAL_MS);
-                }
-                return;
+                return; // nothing to process
             }
 
-            // Process user input (hybrid memory + learning is inside logic.respond)
             logic.setInitiation(false);
             logic.setUserInput(true);
             String[] tokens = logic.prepInput(input);
@@ -526,58 +418,6 @@ public class MainActivity extends Activity
         Data.saveHistory(history);
         Util.CleanMemory(this);
         outputView.post(this::scrollHistory);
-        if (isConnected) {
-            sendBluetoothMessage(response);
-            stopTimer();
-            bl_DelayForever = true;
-        }
-    }
-
-    private void sendBluetoothMessage(String message) {
-        if (bluetoothService != null && bluetoothService.getState() == BluetoothService.STATE_CONNECTED
-                && message.length() > 0) {
-            Log.d(TAG, "Bluetooth sent: " + message);
-            bluetoothService.write(message.getBytes());
-            outStringBuffer.setLength(0);
-        }
-    }
-
-    private void receiveBluetoothMessage(String message) {
-        if (message.length() == 0) return;
-        Log.d(TAG, "Bluetooth received: " + message);
-        if (message.equals("RealAI Connect")) {
-            if (isConnected) return;
-            Toast.makeText(this, "AIs connected.", Toast.LENGTH_SHORT).show();
-            sendBluetoothMessage("RealAI Connect");
-            isConnected = true;
-            inputView.setEnabled(false);
-            encourageButton.setEnabled(false);
-            discourageButton.setEnabled(false);
-            inputView.setText(EMPTY);
-            return;
-        }
-        if (message.equals("RealAI Disconnect")) {
-            if (isConnected) {
-                Toast.makeText(this, "AIs disconnected.", Toast.LENGTH_SHORT).show();
-                sendBluetoothMessage("RealAI Disconnect");
-                isConnected = false;
-                inputView.setEnabled(true);
-                encourageButton.setEnabled(true);
-                discourageButton.setEnabled(true);
-                mainHandler.removeCallbacks(respondRunnable);
-                startTimer();
-            }
-            return;
-        }
-        receivedBluetoothMessage = message;
-        List<String> history = Data.getHistory();
-        history.add("Other AI: " + receivedBluetoothMessage);
-        Data.saveHistory(history);
-        Util.CleanMemory(this);
-        outputView.post(this::scrollHistory);
-        responseDelayCounter = 0;
-        mainHandler.post(respondRunnable);
-        stopTimer();
     }
 
     // ------------------------------------------------------------------------
@@ -587,16 +427,8 @@ public class MainActivity extends Activity
     private void startTimer() {
         if (timerRunnable == null) timerRunnable = new TimerRunnable();
         mainHandler.removeCallbacks(timerRunnable);
-        if (isConnected) {
-            idleDelayCounter = 1;
-            // When connected, use the same delay logic
-            int delay = bl_DelayForever ? 60000 : int_Time;
-            if (delay <= 0) delay = 10000;
-            mainHandler.postDelayed(timerRunnable, delay);
-        } else {
-            idleDelayCounter = 0;
-            mainHandler.post(timerRunnable);
-        }
+        idleDelayCounter = 0;
+        mainHandler.post(timerRunnable);
     }
 
     private void stopTimer() {
@@ -668,6 +500,7 @@ public class MainActivity extends Activity
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
+        this.menu = menu;
         getMenuInflater().inflate(R.menu.main, menu);
         updateMenuTitles(menu);
         return true;
@@ -675,8 +508,6 @@ public class MainActivity extends Activity
 
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
-        miConnect = menu.findItem(R.id.connect);
-        miDisconnect = menu.findItem(R.id.disconnect);
         miNewSession = menu.findItem(R.id.new_session);
         miThoughts = menu.findItem(R.id.thought_log);
         miTips = menu.findItem(R.id.tips);
@@ -686,34 +517,6 @@ public class MainActivity extends Activity
         miEraseBrain = menu.findItem(R.id.erase_brain);
         miAdvanced = menu.findItem(R.id.advanced);
         miExit = menu.findItem(R.id.exit_app);
-
-        if (isBluetoothEnabled) {
-            if (isConnected) {
-                miConnect.setVisible(false);
-                miDisconnect.setVisible(true);
-                miNewSession.setVisible(false);
-                miThoughts.setVisible(false);
-                miTips.setVisible(false);
-                miWordFix.setVisible(false);
-                miSetDelay.setVisible(false);
-                miSetResponse.setVisible(false);
-                miEraseBrain.setVisible(false);
-                miAdvanced.setVisible(false);
-                miExit.setVisible(false);
-            } else {
-                miConnect.setVisible(true);
-                miDisconnect.setVisible(false);
-                miNewSession.setVisible(true);
-                miThoughts.setVisible(true);
-                miTips.setVisible(true);
-                miWordFix.setVisible(true);
-                miSetDelay.setVisible(true);
-                miSetResponse.setVisible(true);
-                miEraseBrain.setVisible(true);
-                miAdvanced.setVisible(true);
-                miExit.setVisible(true);
-            }
-        }
         return true;
     }
 
@@ -722,19 +525,7 @@ public class MainActivity extends Activity
         int id = item.getItemId();
         if (id == R.id.advanced) {
             Util.ToggleAdvanced(item, logic);
-            updateMenuTitles(getMenu());
-            return true;
-        } else if (id == R.id.connect) {
-            sendBluetoothMessage("RealAI Connect");
-            return true;
-        } else if (id == R.id.disconnect) {
-            sendBluetoothMessage("RealAI Disconnect");
-            isConnected = false;
-            inputView.setEnabled(true);
-            encourageButton.setEnabled(true);
-            discourageButton.setEnabled(true);
-            mainHandler.removeCallbacks(respondRunnable);
-            startTimer();
+            updateMenuTitles(menu);
             return true;
         } else if (id == R.id.erase_brain) {
             confirmErase();
@@ -753,7 +544,7 @@ public class MainActivity extends Activity
             return true;
         } else if (id == R.id.speech) {
             Util.ToggleSpeech(item, logic);
-            updateMenuTitles(getMenu());
+            updateMenuTitles(menu);
             return true;
         } else if (id == R.id.thought_log) {
             stopTimer();
@@ -804,9 +595,13 @@ public class MainActivity extends Activity
 
     private void updateMenuTitles(Menu menu) {
         MenuItem advanced = menu.findItem(R.id.advanced);
-        advanced.setTitle("Advanced Mode: " + logic.isAdvanced());
+        if (advanced != null) {
+            advanced.setTitle("Advanced Mode: " + logic.isAdvanced());
+        }
         MenuItem speech = menu.findItem(R.id.speech);
-        speech.setTitle("Speech: " + logic.isSpeech());
+        if (speech != null) {
+            speech.setTitle("Speech: " + logic.isSpeech());
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -1032,7 +827,7 @@ public class MainActivity extends Activity
     }
 
     // ------------------------------------------------------------------------
-    // Apply delay setting (FIX #2)
+    // Apply delay setting
     // ------------------------------------------------------------------------
 
     private void applyDelaySetting() {
@@ -1044,7 +839,7 @@ public class MainActivity extends Activity
                     String.valueOf(logic.isProceduralBased()),
                     String.valueOf(logic.isSpeech()));
             bl_DelayForever = true;
-            int_Time = 0; // not used, but set for clarity
+            int_Time = 0;
         } else {
             int seconds = (delaySelection * 10) + 10;
             Data.setConfig(seconds + " seconds",
@@ -1054,7 +849,7 @@ public class MainActivity extends Activity
                     String.valueOf(logic.isProceduralBased()),
                     String.valueOf(logic.isSpeech()));
             bl_DelayForever = false;
-            int_Time = seconds * 1000; // store in milliseconds
+            int_Time = seconds * 1000;
         }
         closeWordFixMode();
     }
@@ -1205,63 +1000,12 @@ public class MainActivity extends Activity
     }
 
     // ------------------------------------------------------------------------
-    // Bluetooth Handler
-    // ------------------------------------------------------------------------
-
-    private static class BluetoothHandler extends Handler {
-        private final WeakReference<MainActivity> activityRef;
-
-        BluetoothHandler(MainActivity activity) {
-            super(Looper.getMainLooper());
-            this.activityRef = new WeakReference<>(activity);
-        }
-
-        @Override
-        public void handleMessage(Message msg) {
-            MainActivity activity = activityRef.get();
-            if (activity == null) return;
-
-            switch (msg.what) {
-                case BluetoothService.MESSAGE_STATE_CHANGE:
-                    switch (msg.arg1) {
-                        case BluetoothService.STATE_NONE:
-                            Toast.makeText(activity, "Bluetooth not connected.", Toast.LENGTH_SHORT).show();
-                            break;
-                        case BluetoothService.STATE_LISTEN:
-                            Toast.makeText(activity, "Bluetooth listening for a connection...", Toast.LENGTH_SHORT).show();
-                            break;
-                        case BluetoothService.STATE_CONNECTING:
-                            Toast.makeText(activity, "Bluetooth connecting...", Toast.LENGTH_SHORT).show();
-                            break;
-                        case BluetoothService.STATE_CONNECTED:
-                            Toast.makeText(activity, "Bluetooth connection established.", Toast.LENGTH_SHORT).show();
-                            break;
-                    }
-                    break;
-                case BluetoothService.MESSAGE_READ:
-                    byte[] readBuf = (byte[]) msg.obj;
-                    String readMessage = new String(readBuf, 0, msg.arg1);
-                    activity.receiveBluetoothMessage(readMessage);
-                    break;
-                case BluetoothService.MESSAGE_DEVICE_NAME:
-                    activity.connectedDeviceName = msg.getData().getString(BluetoothService.Constants.DEVICE_NAME);
-                    Toast.makeText(activity, "Connected to " + activity.connectedDeviceName, Toast.LENGTH_SHORT).show();
-                    break;
-                case BluetoothService.MESSAGE_TOAST:
-                    Toast.makeText(activity, msg.getData().getString(BluetoothService.Constants.TOAST), Toast.LENGTH_SHORT).show();
-                    break;
-            }
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // FIX #4: Load saved delay from config
+    // Load saved delay from config
     // ------------------------------------------------------------------------
 
     private void loadDelayFromConfig() {
         String delayStr = Data.getDelay();
         if (delayStr == null || delayStr.isEmpty()) {
-            // default already set: bl_DelayForever = false, int_Time = 10000
             return;
         }
         if (delayStr.equalsIgnoreCase("Infinite")) {
@@ -1270,12 +1014,10 @@ public class MainActivity extends Activity
         } else {
             bl_DelayForever = false;
             try {
-                // Expect format like "10 seconds", "20 seconds", etc.
                 String numberPart = delayStr.replace(" seconds", "").trim();
                 int seconds = Integer.parseInt(numberPart);
                 int_Time = seconds * 1000;
             } catch (NumberFormatException e) {
-                // fallback to 10 seconds
                 int_Time = 10000;
             }
         }
