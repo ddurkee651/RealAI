@@ -1,14 +1,8 @@
 package com.oblivionburn.nlp.engine.neural;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.io.*;
+import java.util.*;
 
-/**
- * Word‑level tokenizer that builds vocabulary dynamically.
- * Maps words to integer IDs for the neural network.
- */
 public class Tokenizer {
 
     public static final int PAD_ID = 0;
@@ -20,11 +14,10 @@ public class Tokenizer {
     private final List<String> idToWord = new ArrayList<>();
 
     public Tokenizer() {
-        // Special tokens
-        idToWord.add("<PAD>");   // 0
-        idToWord.add("<UNK>");   // 1
-        idToWord.add("<START>"); // 2
-        idToWord.add("<END>");   // 3
+        idToWord.add("<PAD>");
+        idToWord.add("<UNK>");
+        idToWord.add("<START>");
+        idToWord.add("<END>");
         wordToId.put("<PAD>", 0);
         wordToId.put("<UNK>", 1);
         wordToId.put("<START>", 2);
@@ -53,12 +46,8 @@ public class Tokenizer {
         }
     }
 
-    /**
-     * Splits text into word tokens (simple whitespace + punctuation splitting).
-     */
     public List<String> tokenize(String text) {
         List<String> tokens = new ArrayList<>();
-        // Add spaces around punctuation
         text = text.replaceAll("([.,!?;:()\\[\\]{}\"'])", " $1 ");
         String[] parts = text.toLowerCase().trim().split("\\s+");
         for (String part : parts) {
@@ -67,9 +56,6 @@ public class Tokenizer {
         return tokens;
     }
 
-    /**
-     * Encodes a sentence into token IDs (with start and end tokens).
-     */
     public int[] encode(String sentence, boolean addSpecialTokens) {
         List<String> tokens = tokenize(sentence);
         for (String token : tokens) addWord(token);
@@ -84,9 +70,6 @@ public class Tokenizer {
         return ids;
     }
 
-    /**
-     * Decodes token IDs back to a string.
-     */
     public String decode(int[] ids) {
         StringBuilder sb = new StringBuilder();
         for (int id : ids) {
@@ -97,5 +80,23 @@ public class Tokenizer {
             sb.append(word);
         }
         return sb.toString().trim();
+    }
+
+    public void saveVocab(File file) throws IOException {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+            for (String word : idToWord) {
+                writer.write(word);
+                writer.newLine();
+            }
+        }
+    }
+
+    public void loadVocab(File file) throws IOException {
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                addWord(line.trim());
+            }
+        }
     }
 }

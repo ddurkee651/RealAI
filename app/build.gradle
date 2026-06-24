@@ -29,8 +29,13 @@ android {
     }
 }
 
+configurations.all {
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib'
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+}
+
 dependencies {
-    // AndroidX
     implementation('androidx.appcompat:appcompat:1.6.1') {
         exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
         exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
@@ -40,12 +45,7 @@ dependencies {
         exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
     }
 
-    // Material Components (NavigationView, DrawerLayout)
     implementation 'com.google.android.material:material:1.9.0'
-
-    // Desugaring (needed for java.time, streams, etc. on older APIs)
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
-
-    // PDF text extraction (optional but recommended)
     implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
 }

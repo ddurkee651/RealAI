@@ -10,6 +10,9 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Spinner;
+
+import com.oblivionburn.nlp.R;
+
 import java.util.List;
 
 public class UIManager {

@@ -2,17 +2,12 @@ package com.oblivionburn.nlp.engine.neural;
 
 import java.util.Random;
 
-/**
- * Lightweight tensor library for on‑device neural networks.
- * Supports 1D (vector) and 2D (matrix) tensors with automatic gradient tracking.
- */
 public class Tensor {
 
     public final float[] data;
     public final int rows, cols;
     public final boolean requiresGrad;
 
-    // Gradient of the loss with respect to this tensor (same shape)
     public Tensor grad;
 
     private Tensor(float[] data, int rows, int cols, boolean requiresGrad) {
@@ -21,8 +16,6 @@ public class Tensor {
         this.cols = cols;
         this.requiresGrad = requiresGrad;
     }
-
-    // ---- Factory methods ----
 
     public static Tensor vector(int size) {
         return new Tensor(new float[size], size, 1, false);
@@ -52,21 +45,16 @@ public class Tensor {
         return new Tensor(d, rows, cols, false);
     }
 
-    // ---- Accessors ----
-
     public float get(int r, int c) { return data[r * cols + c]; }
     public void set(int r, int c, float v) { data[r * cols + c] = v; }
 
     public float get(int i) { return data[i]; }
     public void set(int i, float v) { data[i] = v; }
 
-    // ---- In‑place operations (for building computation graph) ----
-
     public Tensor add(Tensor other) {
         assert rows == other.rows && cols == other.cols;
         Tensor out = new Tensor(new float[data.length], rows, cols, true);
         for (int i = 0; i < data.length; i++) out.data[i] = this.data[i] + other.data[i];
-        // Store references for backward
         out.backwardFn = () -> {
             if (this.requiresGrad) {
                 if (this.grad == null) this.grad = zeros(rows, cols);
@@ -136,7 +124,6 @@ public class Tensor {
     }
 
     public Tensor softmax() {
-        // row‑wise softmax
         Tensor out = new Tensor(new float[data.length], rows, cols, true);
         for (int r = 0; r < rows; r++) {
             float max = Float.NEGATIVE_INFINITY;
@@ -182,7 +169,6 @@ public class Tensor {
             for (int c = 0; c < cols; c++) out.set(r, c, (get(r, c) - mean) * invStd);
         }
         out.backwardFn = () -> {
-            // simplified gradient for layer norm
             if (this.requiresGrad) {
                 if (this.grad == null) this.grad = zeros(rows, cols);
                 for (int r = 0; r < rows; r++) {
@@ -228,15 +214,28 @@ public class Tensor {
         return loss;
     }
 
-    // Backward function (set by operations)
+    public Tensor transpose() {
+        Tensor out = new Tensor(new float[data.length], cols, rows, true);
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
+                out.set(j, i, get(i, j));
+        out.backwardFn = () -> {
+            if (this.requiresGrad) {
+                if (this.grad == null) this.grad = zeros(rows, cols);
+                for (int i = 0; i < rows; i++)
+                    for (int j = 0; j < cols; j++)
+                        this.grad.data[i * cols + j] += out.grad.data[j * rows + i];
+            }
+        };
+        return out;
+    }
+
     private Runnable backwardFn;
 
     public void backward() {
         if (grad == null) grad = ones(rows, cols);
         backwardFn.run();
     }
-
-    // ---- Utility ----
 
     public Tensor copy() {
         return new Tensor(data.clone(), rows, cols, requiresGrad);
