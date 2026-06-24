@@ -1,13 +1,13 @@
 package com.oblivionburn.nlp.engine;
 
-class WordData {
+public class WordData {
     private Integer Frequency;
     private String Word;
 
-    WordData() {}
+    public WordData() {}
 
-    String getWord() { return this.Word; }
-    void setWord(String str) { this.Word = str; }
-    Integer getFrequency() { return this.Frequency; }
-    void setFrequency(Integer num) { this.Frequency = num; }
+    public String getWord() { return this.Word; }
+    public void setWord(String str) { this.Word = str; }
+    public Integer getFrequency() { return this.Frequency; }
+    public void setFrequency(Integer num) { this.Frequency = num; }
 }

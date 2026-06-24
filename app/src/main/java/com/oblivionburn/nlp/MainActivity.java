@@ -199,15 +199,6 @@ public class MainActivity extends Activity
     }
 
     // ----------------------------------------------------------------
-    // UI callbacks
-    // ----------------------------------------------------------------
-
-    private void scrollHistory() {
-        ui.clearAndShowHistory(Data.getHistory());
-        ui.setFaceImage(R.drawable.face_neutral);
-    }
-
-    // ----------------------------------------------------------------
     // Button handlers
     // ----------------------------------------------------------------
 
@@ -244,16 +235,16 @@ public class MainActivity extends Activity
     public void Encourage(View view) {
         Util.CleanMemory(this);
         Util.Encourage();
-        List<String> history = Data.getHistory();
-        history.add("---New Session---");
-        Data.saveHistory(history);
-        ui.clearAndShowHistory(history);
-        logic.setNewInput(false);
+        refreshAfterSessionAction();
     }
 
     public void Discourage(View view) {
         Util.CleanMemory(this);
         Util.Discourage();
+        refreshAfterSessionAction();
+    }
+
+    private void refreshAfterSessionAction() {
         List<String> history = Data.getHistory();
         history.add("---New Session---");
         Data.saveHistory(history);
@@ -418,7 +409,13 @@ public class MainActivity extends Activity
     @Override public void setTipsMode(boolean v) { isTipsMode = v; }
     @Override public boolean isThoughtMode() { return isThoughtMode; }
     @Override public boolean isTipsMode() { return isTipsMode; }
-    @Override public void scrollHistory() { ui.clearAndShowHistory(Data.getHistory()); ui.setFaceImage(R.drawable.face_neutral); }
+
+    @Override
+    public void scrollHistory() {
+        ui.clearAndShowHistory(Data.getHistory());
+        ui.setFaceImage(R.drawable.face_neutral);
+    }
+
     @Override public void invalidateOptionsMenu() { super.invalidateOptionsMenu(); }
 
     // ----------------------------------------------------------------
