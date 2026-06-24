@@ -1,4 +1,4 @@
-package com.oblivionburn.nlp;
+package com.oblivionburn.nlp.ui;
 
 import android.content.Context;
 import android.util.AttributeSet;
@@ -8,11 +8,11 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.widget.TextView;
 
-import androidx.appcompat.widget.AppCompatEditText;   // <-- use AndroidX
+import androidx.appcompat.widget.AppCompatEditText;
 
 import java.lang.reflect.Field;
 
-public class LiteText extends AppCompatEditText {   // <-- extend AndroidX version
+public class LiteText extends AppCompatEditText {
     private final Context context;
 
     boolean canPaste() { return false; }

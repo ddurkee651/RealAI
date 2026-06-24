@@ -1,4 +1,4 @@
-package com.oblivionburn.nlp;
+package com.oblivionburn.nlp.engine;
 
 import android.content.Context;
 import android.util.Log;
@@ -17,13 +17,6 @@ import java.util.Locale;
 
 /**
  * Data persistence layer – all file I/O for the AI brain.
- * <p>
- * Refactored for:
- * - Fixed critical bugs (e.g., premature return in getWords)
- * - Consistent error handling with logging
- * - Try‑with‑resources for automatic resource closing
- * - Use of constants for file names and keys
- * - Config loading optimised to avoid repeated file reads
  */
 public final class Data {
 
@@ -41,15 +34,12 @@ public final class Data {
     private static final String SUBDIR_HISTORY = "History";
     private static final String SUBDIR_THOUGHTS = "Thoughts";
 
-    private static final int MAX_HISTORY_LINES = 40;  // keep only last N lines
+    private static final int MAX_HISTORY_LINES = 40;
 
-    private static String baseDir;   // e.g., /storage/emulated/0/Android/data/.../files
+    private static String baseDir;
 
-    private Data() { }  // utility class – no instantiation
+    private Data() { }
 
-    /**
-     * Must be called once at app startup (e.g., in Application or MainActivity).
-     */
     public static void initData(Context context) {
         baseDir = context.getExternalFilesDir(null).getAbsolutePath();
         ensureDirectoriesExist();
@@ -57,7 +47,7 @@ public final class Data {
     }
 
     // ------------------------------------------------------------------------
-    // Config handling (reading/writing)
+    // Config handling
     // ------------------------------------------------------------------------
 
     private static File getConfigFile() {
@@ -69,7 +59,6 @@ public final class Data {
         if (config.exists()) return;
         try {
             if (config.createNewFile()) {
-                // Write default configuration
                 String defaultConfig =
                         "Delay:90 seconds\n" +
                         "Advanced:false\n" +
@@ -95,11 +84,6 @@ public final class Data {
         if (!thoughts.exists()) thoughts.mkdirs();
     }
 
-    /**
-     * Reads a single value from Config.ini by key.
-     * This is inefficient if called many times; prefer to cache config in memory.
-     * However, the app calls these only at startup or when toggled, so it's acceptable.
-     */
     private static String getConfigValue(String key) {
         File config = getConfigFile();
         if (!config.exists()) return EMPTY;
@@ -124,9 +108,6 @@ public final class Data {
     public static String getProceduralBased(){ return getConfigValue("Procedural Response Method"); }
     public static String getSpeech()         { return getConfigValue("Speech"); }
 
-    /**
-     * Writes all config values in one go.
-     */
     public static void setConfig(String delay, String advanced, String topic,
                                  String condition, String procedural, String speech) {
         File config = getConfigFile();
@@ -280,9 +261,6 @@ public final class Data {
         return result;
     }
 
-    /**
-     * Saves output (responses) for a given input phrase.
-     */
     public static void saveOutput(List<String> outputList, String inputPhrase) {
         File file = new File(baseDir + DIR_BRAIN, inputPhrase + ".txt");
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(file))) {
@@ -295,9 +273,6 @@ public final class Data {
         }
     }
 
-    /**
-     * Returns all saved outputs for a given input phrase.
-     */
     public static List<String> getAllOutputs(String inputPhrase) {
         List<String> result = new ArrayList<>();
         File file = new File(baseDir + DIR_BRAIN, inputPhrase + ".txt");
@@ -313,10 +288,6 @@ public final class Data {
         return result;
     }
 
-    /**
-     * Gets outputs that are not marked with '#' (not topic‑related) and
-     * strips the '^' suffix if present.
-     */
     public static List<String> getOutputList_NoRelated(String inputPhrase) {
         List<String> result = new ArrayList<>();
         File file = new File(baseDir + DIR_BRAIN, inputPhrase + ".txt");
@@ -337,9 +308,6 @@ public final class Data {
         return result;
     }
 
-    /**
-     * Gets outputs that contain '#' (topic markers).
-     */
     public static List<String> getOutputList_OnlyTopics(String inputPhrase) {
         List<String> result = new ArrayList<>();
         File file = new File(baseDir + DIR_BRAIN, inputPhrase + ".txt");
@@ -355,9 +323,6 @@ public final class Data {
         return result;
     }
 
-    /**
-     * Gets outputs that contain the given topic word and have '^' separators.
-     */
     public static List<String> getRelatedOutputs(String inputPhrase, String topicWord) {
         List<String> result = new ArrayList<>();
         File file = new File(baseDir + DIR_BRAIN, inputPhrase + ".txt");
@@ -378,9 +343,6 @@ public final class Data {
         return result;
     }
 
-    /**
-     * Extracts topic words from a response line (those starting with '#' and having '~').
-     */
     public static List<String> getTopics(String inputPhrase) {
         List<String> result = new ArrayList<>();
         File file = new File(baseDir + DIR_BRAIN, inputPhrase + ".txt");
@@ -391,7 +353,6 @@ public final class Data {
                 if (line.contains("#")) {
                     int idx = line.indexOf('~');
                     if (idx > 1) {
-                        // format: #topic~rest
                         String topic = line.substring(1, idx);
                         result.add(topic);
                     }
@@ -428,7 +389,6 @@ public final class Data {
         } catch (IOException e) {
             Log.e(TAG, "readLimitedLines failed for " + file.getName(), e);
         }
-        // Keep only last MAX_HISTORY_LINES
         List<String> limited = new ArrayList<>();
         int start = Math.max(0, all.size() - MAX_HISTORY_LINES);
         for (int i = start; i < all.size(); i++) {
@@ -476,7 +436,7 @@ public final class Data {
     }
 
     // ------------------------------------------------------------------------
-    // Semantic Memory – fully implemented
+    // Semantic Memory
     // ------------------------------------------------------------------------
 
     private static File getMemoryFile() {

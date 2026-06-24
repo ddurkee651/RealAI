@@ -2,111 +2,73 @@ package com.oblivionburn.nlp;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.Context;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.text.method.LinkMovementMethod;
-import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
-import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Spinner;
 import android.widget.Toast;
 
+import com.oblivionburn.nlp.engine.ConversationEngine;
+import com.oblivionburn.nlp.engine.Data;
+import com.oblivionburn.nlp.engine.Logic;
+import com.oblivionburn.nlp.engine.SettingsManager;
+import com.oblivionburn.nlp.engine.Util;
+import com.oblivionburn.nlp.engine.WordData;
+import com.oblivionburn.nlp.menu.MenuActions;
+import com.oblivionburn.nlp.menu.MenuDelegate;
+import com.oblivionburn.nlp.ui.LiteText;
+import com.oblivionburn.nlp.ui.PressEffectTouchListener;
+import com.oblivionburn.nlp.ui.UIManager;
+import com.oblivionburn.nlp.ui.WordFixManager;
+
 import java.io.File;
 import java.io.IOException;
-import java.lang.ref.WeakReference;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Refactored MainActivity – Bluetooth removed, Enter key fixed, menu fixed.
- */
 public class MainActivity extends Activity
-        implements AdapterView.OnItemSelectedListener, TextToSpeech.OnInitListener {
+        implements AdapterView.OnItemSelectedListener, TextToSpeech.OnInitListener, MenuActions {
 
     private static final String TAG = "REALAI";
-    private static final String EMPTY = "";
-    private static final int DELAY_INTERVAL_MS = 2000;
 
-    // UI components
+    private UIManager ui;
+    private MenuDelegate menuDelegate;
+    private WordFixManager wordFixManager;
+    private SettingsManager settings;
+
     private LiteText outputView;
     private LiteText inputView;
-    private LiteText wordFixTextView;
-    private Spinner wordFixSpinner;
     private Button wordFixButton;
-    private Button menuButton;
-    private Button encourageButton;
-    private Button discourageButton;
-    private ImageView faceImageView;
 
-    // Menus
-    private MenuItem miNewSession;
-    private MenuItem miThoughts;
-    private MenuItem miTips;
-    private MenuItem miWordFix;
-    private MenuItem miSetDelay;
-    private MenuItem miSetResponse;
-    private MenuItem miEraseBrain;
-    private MenuItem miAdvanced;
-    private MenuItem miExit;
-
-    // State flags
-    private boolean isTyping = false;
     private boolean isThoughtMode = false;
     private boolean isWordFixMode = false;
     private boolean isDelayMode = false;
     private boolean isResponsesMode = false;
     private boolean isTipsMode = false;
-    private boolean isEncouragePressed = false;
-    private boolean isDiscouragePressed = false;
-    private boolean isBored = false;
 
-    private int idleDelayCounter = 0;
-    private int delaySelection = 0;
-    private int responseSelection = 0;
     private int wordFixSelection = 0;
 
-    // Core objects
     private Logic logic;
     private TextToSpeech tts;
-
-    // Directories
+    private ConversationEngine engine;
     private File brainDir;
-    private File historyDir;
-    private File thoughtDir;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
-    // Handlers with weak references
-    private final MainHandler mainHandler = new MainHandler(this);
-    private TimerRunnable timerRunnable;
-    private ThoughtRunnable thoughtRunnable;
-    private RespondRunnable respondRunnable;
-
-    // Stored menu for dynamic updates
-    private Menu menu;
-
-    // Static flags (used also by Util)
-    public static boolean bl_DelayForever = false;
-    public static int int_Time = 10000;  // default 10 seconds
-
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
     // Lifecycle
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -115,125 +77,101 @@ public class MainActivity extends Activity
         setContentView(R.layout.activity_main);
 
         Data.initData(this);
-        loadDelayFromConfig();
 
-        initViews();
+        outputView = findViewById(R.id.txt_Output);
+        outputView.setMaxLines(Integer.MAX_VALUE);
+        inputView = findViewById(R.id.txt_Input);
+        Button menuButton = findViewById(R.id.btn_Menu);
+        Button encourageButton = findViewById(R.id.btn_Encourage);
+        Button discourageButton = findViewById(R.id.btn_Discourage);
+        wordFixButton = findViewById(R.id.btn_WordFix);
+        Spinner wordFixSpinner = findViewById(R.id.sp_WordFix);
+        LiteText wordFixTextView = findViewById(R.id.txt_WordFix);
+        ImageView faceImageView = findViewById(R.id.img_Face);
+
+        ui = new UIManager(this, outputView, inputView, wordFixTextView,
+                wordFixSpinner, wordFixButton, menuButton, encourageButton,
+                discourageButton, faceImageView);
+        wordFixSpinner.setOnItemSelectedListener(this);
 
         brainDir = new File(getExternalFilesDir(null), "Brain");
-        historyDir = new File(brainDir, "History");
-        thoughtDir = new File(brainDir, "Thoughts");
-
         logic = new Logic();
         Util.init(logic);
 
-	respondRunnable = new RespondRunnable();
-
         tts = new TextToSpeech(getApplicationContext(), this);
+
+        engine = new ConversationEngine(mainHandler, logic, tts,
+                this::scrollHistory,
+                line -> { ui.appendOutputLine(line); ui.setFaceImage(R.drawable.face_neutral); });
+
+        menuDelegate = new MenuDelegate(this, ui, logic, engine);
+        wordFixManager = new WordFixManager(this, ui);
+        settings = new SettingsManager(logic, ui);
+        settings.loadDelayFromConfig();
 
         createBrainDirectories();
         setupListeners();
 
-        startTimer();
-        startThinking();
+        engine.startTimer();
+        engine.startThinking();
 
-        // Show tips on first run – you can remove this line if you prefer not to show tips on launch
-        displayTips();
+        displayTipsMode();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        stopTimer();
-        stopThinking();
+        engine.stopTimer();
+        engine.stopThinking();
         mainHandler.removeCallbacksAndMessages(null);
     }
 
     @Override
     protected void onDestroy() {
-        stopTimer();
-        stopThinking();
+        engine.stopTimer();
+        engine.stopThinking();
         mainHandler.removeCallbacksAndMessages(null);
-
-        if (tts != null) {
-            tts.stop();
-            tts.shutdown();
-        }
+        if (tts != null) { tts.stop(); tts.shutdown(); }
         super.onDestroy();
     }
 
     @Override
     public void onBackPressed() {
-        if (isThoughtMode) {
-            closeThoughtMode();
-        } else if (isWordFixMode || isDelayMode || isResponsesMode) {
-            closeWordFixMode();
-        } else if (isTipsMode) {
-            closeTipsMode();
-        } else {
-            confirmExit();
-        }
+        if (isThoughtMode) closeThoughtMode();
+        else if (isWordFixMode || isDelayMode || isResponsesMode) closeWordFixMode();
+        else if (isTipsMode) closeTipsMode();
+        else confirmExitDialog();
     }
 
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
     // Initialisation helpers
-    // ------------------------------------------------------------------------
-
-    private void initViews() {
-        outputView = findViewById(R.id.txt_Output);
-        outputView.setMaxLines(Integer.MAX_VALUE);
-        inputView = findViewById(R.id.txt_Input);
-        menuButton = findViewById(R.id.btn_Menu);
-        encourageButton = findViewById(R.id.btn_Encourage);
-        discourageButton = findViewById(R.id.btn_Discourage);
-        wordFixButton = findViewById(R.id.btn_WordFix);
-        wordFixSpinner = findViewById(R.id.sp_WordFix);
-        wordFixTextView = findViewById(R.id.txt_WordFix);
-        faceImageView = findViewById(R.id.img_Face);
-
-        wordFixSpinner.setOnItemSelectedListener(this);
-    }
+    // ----------------------------------------------------------------
 
     private void createBrainDirectories() {
         if (!brainDir.exists()) brainDir.mkdirs();
-        if (!historyDir.exists()) historyDir.mkdirs();
-        if (!thoughtDir.exists()) thoughtDir.mkdirs();
-
+        File historyDir = new File(brainDir, "History");
+        File thoughtDir = new File(brainDir, "Thoughts");
+        historyDir.mkdirs();
+        thoughtDir.mkdirs();
         try {
-            File wordsFile = new File(brainDir, "Words.txt");
-            if (!wordsFile.exists()) wordsFile.createNewFile();
-            File inputListFile = new File(brainDir, "InputList.txt");
-            if (!inputListFile.exists()) inputListFile.createNewFile();
+            new File(brainDir, "Words.txt").createNewFile();
+            new File(brainDir, "InputList.txt").createNewFile();
         } catch (IOException e) {
             Log.e(TAG, "Failed to create brain files", e);
         }
     }
 
-    // ------------------------------------------------------------------------
-    // Listeners
-    // ------------------------------------------------------------------------
-
     private void setupListeners() {
         inputView.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void afterTextChanged(Editable s) {}
-
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                faceImageView.setImageResource(R.drawable.face_neutral);
-                if (inputView.getText().toString().equals(EMPTY)) {
-                    isTyping = false;
-                    startTimer();
-                    startThinking();
-                } else {
-                    isTyping = true;
-                    logic.setInitiation(false);
-                    stopTimer();
-                    stopThinking();
-                }
+                ui.setFaceImage(R.drawable.face_neutral);
+                engine.setTyping(s.length() != 0);
             }
         });
 
-        // Catch Enter key directly (physical keyboard)
         inputView.setOnKeyListener((v, keyCode, event) -> {
             if (keyCode == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN) {
                 onSend(v);
@@ -242,7 +180,6 @@ public class MainActivity extends Activity
             return false;
         });
 
-        // Also catch the soft‑keyboard "Send" action
         inputView.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
                 onSend(v);
@@ -251,112 +188,32 @@ public class MainActivity extends Activity
             return false;
         });
 
-        encourageButton.setOnTouchListener(new PressEffectTouchListener(
-                R.drawable.face_encourage,
-                () -> isEncouragePressed = true,
-                () -> isEncouragePressed = false
-        ));
-
-        discourageButton.setOnTouchListener(new PressEffectTouchListener(
-                R.drawable.face_discourage,
-                () -> isDiscouragePressed = true,
-                () -> isDiscouragePressed = false
-        ));
+        findViewById(R.id.btn_Encourage).setOnTouchListener(
+                new PressEffectTouchListener(R.drawable.face_encourage,
+                        () -> {}, () -> {},
+                        findViewById(R.id.img_Face)));
+        findViewById(R.id.btn_Discourage).setOnTouchListener(
+                new PressEffectTouchListener(R.drawable.face_discourage,
+                        () -> {}, () -> {},
+                        findViewById(R.id.img_Face)));
     }
 
-    // ------------------------------------------------------------------------
-    // Handlers and Runnables
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // UI callbacks
+    // ----------------------------------------------------------------
 
-    private static class MainHandler extends Handler {
-        private final WeakReference<MainActivity> activityRef;
-
-        MainHandler(MainActivity activity) {
-            super(Looper.getMainLooper());
-            this.activityRef = new WeakReference<>(activity);
-        }
+    private void scrollHistory() {
+        ui.clearAndShowHistory(Data.getHistory());
+        ui.setFaceImage(R.drawable.face_neutral);
     }
 
-    private class TimerRunnable implements Runnable {
-        @Override
-        public void run() {
-            MainActivity activity = MainActivity.this;
-            if (activity.isBored) return;
-
-            if (activity.idleDelayCounter != 0) {
-                if (activity.idleDelayCounter == 1 && !bl_DelayForever) {
-                    activity.isBored = true;
-                    activity.attentionSpan();
-                    activity.idleDelayCounter = 0;
-                }
-            } else {
-                activity.idleDelayCounter++;
-            }
-
-            int delay = bl_DelayForever ? 60000 : int_Time;
-            if (delay <= 0) delay = 10000;
-            mainHandler.postDelayed(this, delay);
-        }
-    }
-
-    private class ThoughtRunnable implements Runnable {
-        @Override
-        public void run() {
-            MainActivity activity = MainActivity.this;
-            logic.setUserInput(false);
-            List<String> thoughts = Data.getThoughts();
-            String thought = logic.think(logic.getLastResponseThinking());
-            thought = Util.RulesCheck(thought);
-            if (thought != null && !thought.equals(EMPTY)) {
-                thoughts.add("NLP: " + thought);
-                Data.saveThoughts(thoughts);
-                Util.CleanMemory(activity);
-            }
-            if (activity.isThoughtMode) {
-                activity.outputView.post(activity::scrollThoughts);
-            }
-            mainHandler.postDelayed(this, DELAY_INTERVAL_MS);
-        }
-    }
-
-    private class RespondRunnable implements Runnable {
-        @Override
-        public void run() {
-            MainActivity activity = MainActivity.this;
-            String input = activity.inputView.getText().toString();
-
-            if (input.length() == 0) {
-                return; // nothing to process
-            }
-
-            logic.setInitiation(false);
-            logic.setUserInput(true);
-            String[] tokens = logic.prepInput(input);
-            if (tokens != null && tokens.length > 0) {
-                List<String> history = Data.getHistory();
-                String cleanedInput = Util.RulesCheck(input);
-                history.add("User: " + cleanedInput);
-                String response = logic.respond(tokens, cleanedInput);
-                if (response != null && !response.equals(EMPTY)) {
-                    history.add("AI: " + response);
-                }
-                if (logic.isSpeech()) {
-                    activity.tts.speak(response, TextToSpeech.QUEUE_FLUSH, null, null);
-                }
-                Data.saveHistory(history);
-                Util.CleanMemory(activity);
-                activity.outputView.post(activity::scrollHistory);
-                activity.inputView.setText(EMPTY);
-            }
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // Public methods called from UI
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Button handlers
+    // ----------------------------------------------------------------
 
     public void onSend(View view) {
-        mainHandler.post(respondRunnable);
+        engine.processUserInput(inputView.getText().toString());
+        inputView.setText("");
     }
 
     public void onMenu(View view) {
@@ -373,11 +230,14 @@ public class MainActivity extends Activity
 
     public void WordFix(View view) {
         if (isWordFixMode) {
-            new WordFixTask().execute();
+            String newWord = ui.getWordFixText();
+            wordFixManager.applyWordFix(wordFixSelection, newWord, this::closeWordFixMode);
         } else if (isDelayMode) {
-            applyDelaySetting();
+            settings.applyDelaySetting();
+            closeWordFixMode();
         } else if (isResponsesMode) {
-            toggleResponseMethod();
+            settings.toggleResponseMethod();
+            wordFixButton.setText(settings.getResponseToggleText());
         }
     }
 
@@ -387,7 +247,7 @@ public class MainActivity extends Activity
         List<String> history = Data.getHistory();
         history.add("---New Session---");
         Data.saveHistory(history);
-        outputView.post(this::scrollHistory);
+        ui.clearAndShowHistory(history);
         logic.setNewInput(false);
     }
 
@@ -397,7 +257,7 @@ public class MainActivity extends Activity
         List<String> history = Data.getHistory();
         history.add("---New Session---");
         Data.saveHistory(history);
-        outputView.post(this::scrollHistory);
+        ui.clearAndShowHistory(history);
         logic.setNewInput(false);
     }
 
@@ -407,313 +267,44 @@ public class MainActivity extends Activity
         history.add("---New Session---");
         Data.saveHistory(history);
         Util.CleanMemory(this);
-        inputView.setVisibility(View.VISIBLE);
-        menuButton.setText(R.string.menu_button);
-        menuButton.setVisibility(View.VISIBLE);
-        enableAdvancedUI(true);
-        outputView.post(this::scrollHistory);
-        showKeyboard();
+        ui.setInputVisible(true);
+        ui.setMenuButton(getString(R.string.menu_button), true);
+        ui.setAdvancedUIEnabled(true);
+        ui.clearAndShowHistory(history);
+        ui.showKeyboard();
     }
 
-    // ------------------------------------------------------------------------
-    // Internal logic
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Mode display helpers
+    // ----------------------------------------------------------------
 
-    private void attentionSpan() {
-        if (isTyping) return;
-        logic.setNewInput(false);
-        logic.setInitiation(true);
-        logic.setUserInput(false);
-        String response = logic.respond(new String[0], EMPTY);
-        if (response == null || response.equals(EMPTY)) return;
-
-        List<String> history = Data.getHistory();
-        history.add("AI: " + response);
-        Data.saveHistory(history);
-        Util.CleanMemory(this);
-        outputView.post(this::scrollHistory);
-    }
-
-    // ------------------------------------------------------------------------
-    // Timer / Thinking control
-    // ------------------------------------------------------------------------
-
-    private void startTimer() {
-        if (timerRunnable == null) timerRunnable = new TimerRunnable();
-        mainHandler.removeCallbacks(timerRunnable);
-        idleDelayCounter = 0;
-        mainHandler.post(timerRunnable);
-    }
-
-    private void stopTimer() {
-        if (timerRunnable != null) mainHandler.removeCallbacks(timerRunnable);
-    }
-
-    private void startThinking() {
-        if (thoughtRunnable == null) thoughtRunnable = new ThoughtRunnable();
-        mainHandler.removeCallbacks(thoughtRunnable);
-        mainHandler.post(thoughtRunnable);
-    }
-
-    private void stopThinking() {
-        if (thoughtRunnable != null) mainHandler.removeCallbacks(thoughtRunnable);
-    }
-
-    // ------------------------------------------------------------------------
-    // UI helpers
-    // ------------------------------------------------------------------------
-
-    private void scrollHistory() {
-        outputView.setText(EMPTY);
-        outputView.setMovementMethod(new ScrollingMovementMethod());
-        List<String> history = Data.getHistory();
-        for (String line : history) {
-            outputView.append(line);
-        }
-        outputView.setSelection(outputView.getText().length());
-        faceImageView.setImageResource(R.drawable.face_neutral);
-        isBored = false;
-    }
-
-    private void scrollThoughts() {
-        outputView.setText(EMPTY);
-        outputView.setMovementMethod(new ScrollingMovementMethod());
-        List<String> thoughts = Data.getThoughts();
-        for (String line : thoughts) {
-            outputView.append(line);
-        }
-        outputView.setSelection(outputView.getText().length());
-    }
-
-    private void enableAdvancedUI(boolean enable) {
-        int vis = enable ? View.VISIBLE : View.INVISIBLE;
-        encourageButton.setVisibility(vis);
-        encourageButton.setClickable(enable);
-        encourageButton.setFocusable(enable);
-        discourageButton.setVisibility(vis);
-        discourageButton.setClickable(enable);
-        discourageButton.setFocusable(enable);
-        faceImageView.setVisibility(vis);
-        if (enable) faceImageView.setImageResource(R.drawable.face_neutral);
-    }
-
-    private void hideKeyboard() {
-        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (imm != null) imm.hideSoftInputFromWindow(inputView.getWindowToken(), 0);
-    }
-
-    private void showKeyboard() {
-        inputView.requestFocus();
-        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (imm != null) imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 1);
-    }
-
-    // ------------------------------------------------------------------------
-    // Menu handlers
-    // ------------------------------------------------------------------------
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        this.menu = menu;
-        getMenuInflater().inflate(R.menu.main, menu);
-        updateMenuTitles(menu);
-        return true;
-    }
-
-    @Override
-    public boolean onPrepareOptionsMenu(Menu menu) {
-        miNewSession = menu.findItem(R.id.new_session);
-        miThoughts = menu.findItem(R.id.thought_log);
-        miTips = menu.findItem(R.id.tips);
-        miWordFix = menu.findItem(R.id.word_fix);
-        miSetDelay = menu.findItem(R.id.setdelay);
-        miSetResponse = menu.findItem(R.id.response_types);
-        miEraseBrain = menu.findItem(R.id.erase_brain);
-        miAdvanced = menu.findItem(R.id.advanced);
-        miExit = menu.findItem(R.id.exit_app);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        int id = item.getItemId();
-        if (id == R.id.advanced) {
-            Util.ToggleAdvanced(item, logic);
-            updateMenuTitles(menu);
-            return true;
-        } else if (id == R.id.erase_brain) {
-            confirmErase();
-            return true;
-        } else if (id == R.id.exit_app) {
-            confirmExit();
-            return true;
-        } else if (id == R.id.new_session) {
-            NewSession();
-            return true;
-        } else if (id == R.id.response_types) {
-            displayResponses();
-            return true;
-        } else if (id == R.id.setdelay) {
-            displayDelay();
-            return true;
-        } else if (id == R.id.speech) {
-            Util.ToggleSpeech(item, logic);
-            updateMenuTitles(menu);
-            return true;
-        } else if (id == R.id.thought_log) {
-            stopTimer();
-            startThinking();
-            isThoughtMode = true;
-            return true;
-        } else if (id == R.id.tips) {
-            displayTips();
-            return true;
-        } else if (id == R.id.word_fix) {
-            displayWordFix();
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
-    }
-
-    @Override
-    public boolean onMenuOpened(int featureId, Menu menu) {
-        outputView.setVisibility(View.INVISIBLE);
-        inputView.setVisibility(View.INVISIBLE);
-        menuButton.setVisibility(View.INVISIBLE);
-        enableAdvancedUI(false);
-        hideKeyboard();
-        stopTimer();
-        stopThinking();
-        return super.onMenuOpened(featureId, menu);
-    }
-
-    @Override
-    public void onPanelClosed(int featureId, Menu menu) {
-        // Always restore the main UI
-        outputView.setVisibility(View.VISIBLE);
-        inputView.setVisibility(View.VISIBLE);
-        menuButton.setText(R.string.menu_button);
-        menuButton.setVisibility(View.VISIBLE);
-        enableAdvancedUI(true);
-        startTimer();
-        startThinking();
-        showKeyboard();
-
-        // If we were in a sub‑mode, keep the appropriate view
-        if (isThoughtMode || isTipsMode) {
-            outputView.setVisibility(View.VISIBLE);
-        } else {
-            outputView.post(this::scrollHistory);
-        }
-
-        // Invalidate the menu so it gets re‑created properly next time
-        invalidateOptionsMenu();
-
-        super.onPanelClosed(featureId, menu);
-    }
-
-    private void updateMenuTitles(Menu menu) {
-        MenuItem advanced = menu.findItem(R.id.advanced);
-        if (advanced != null) {
-            advanced.setTitle("Advanced Mode: " + logic.isAdvanced());
-        }
-        MenuItem speech = menu.findItem(R.id.speech);
-        if (speech != null) {
-            speech.setTitle("Speech: " + logic.isSpeech());
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // Sub‑dialogs (WordFix, Delay, Responses, Tips)
-    // ------------------------------------------------------------------------
-
-    private void displayWordFix() {
-        List<WordData> words = Data.getWords();
-        List<String> wordList = new ArrayList<>();
-        for (WordData wd : words) wordList.add(wd.getWord());
-        if (wordList.isEmpty()) {
-            Toast.makeText(this, "No words to fix.", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item, wordList);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        wordFixSpinner.setAdapter(adapter);
-        wordFixSpinner.setSelection(0);
-        wordFixSpinner.setVisibility(View.VISIBLE);
-        wordFixSpinner.setClickable(true);
-        wordFixSpinner.setFocusable(true);
-
-        if (wordFixSelection >= wordList.size()) wordFixSelection = wordList.size() - 1;
-        wordFixTextView.setText(wordList.get(wordFixSelection));
-        wordFixTextView.setVisibility(View.VISIBLE);
-        wordFixTextView.setClickable(true);
-        wordFixTextView.setFocusableInTouchMode(true);
-        wordFixTextView.setFocusable(true);
-        wordFixTextView.requestFocus();
-
-        wordFixButton.setText(R.string.btn_accept);
-        wordFixButton.setVisibility(View.VISIBLE);
-        wordFixButton.setClickable(true);
-        wordFixButton.setFocusable(true);
-
-        stopTimer();
+    private void displayWordFixMode() {
+        wordFixManager.showWordFix(wordFixSelection);
+        engine.stopTimer();
         isWordFixMode = true;
     }
 
-    private void displayDelay() {
+    private void displayDelayMode() {
         String[] options = {"10 seconds", "20 seconds", "30 seconds", "Infinite"};
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item, options);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        wordFixSpinner.setAdapter(adapter);
-        wordFixSpinner.setSelection(delaySelection);
-        wordFixSpinner.setVisibility(View.VISIBLE);
-        wordFixSpinner.setClickable(true);
-        wordFixSpinner.setFocusable(true);
-
-        wordFixButton.setText(R.string.btn_accept);
-        wordFixButton.setVisibility(View.VISIBLE);
-        wordFixButton.setClickable(true);
-        wordFixButton.setFocusable(true);
-
-        stopTimer();
+        ui.setSpinnerItems(options, settings.getDelaySelection());
+        ui.showWordFixButtonOnly(getString(R.string.btn_accept));
+        engine.stopTimer();
         isDelayMode = true;
     }
 
-    private void displayResponses() {
-        menuButton.setText(R.string.ok_button);
-        menuButton.setVisibility(View.VISIBLE);
-
+    private void displayResponsesMode() {
+        ui.setMenuButton(getString(R.string.ok_button), true);
         String[] options = {"Topic Response Method", "Condition Response Method", "Procedural Response Method"};
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item, options);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        wordFixSpinner.setAdapter(adapter);
-        wordFixSpinner.setSelection(responseSelection);
-        wordFixSpinner.setVisibility(View.VISIBLE);
-        wordFixSpinner.setClickable(true);
-        wordFixSpinner.setFocusable(true);
-
-        String current = "";
-        if (responseSelection == 0) current = String.valueOf(logic.isTopicBased());
-        else if (responseSelection == 1) current = String.valueOf(logic.isConditionBased());
-        else if (responseSelection == 2) current = String.valueOf(logic.isProceduralBased());
-        wordFixButton.setText(current);
-        wordFixButton.setVisibility(View.VISIBLE);
-        wordFixButton.setClickable(true);
-        wordFixButton.setFocusable(true);
-
-        stopTimer();
+        ui.setSpinnerItems(options, settings.getResponseSelection());
+        ui.showWordFixButtonOnly(settings.getResponseToggleText());
+        engine.stopTimer();
         isResponsesMode = true;
     }
 
-    private void displayTips() {
-        inputView.setVisibility(View.INVISIBLE);
-        menuButton.setText(R.string.ok_button);
-        enableAdvancedUI(false);
-
+    private void displayTipsMode() {
+        ui.setInputVisible(false);
+        ui.setMenuButton(getString(R.string.ok_button), true);
+        ui.setAdvancedUIEnabled(false);
         String tips = "Here are some tips for teaching the AI: \n\n" +
                 "1. The AI learns from observing how you respond to what it says... so, if it says \"Hello.\" and you say \"How are you?\" it will learn that \"How are you?\" is a possible response to \"Hello.\". If you say something it has never seen before, it will repeat it to see how -you- would respond to it. Learning by imitation, like a young child, is not the only way it learns as you will soon discover.\n\n" +
                 "2. It will generate stuff that sounds nonsensical early on... this is part of the learning process, similar to the way children phrase things in ways that don't quite make sense early on. \n\n" +
@@ -727,318 +318,137 @@ public class MainActivity extends Activity
                 "10. In general... keep it simple. The simpler you speak to it, the better it learns. \n\n" +
                 "For help, check Discord: https://discord.gg/s894BGn \n\n" +
                 "For more information and details of how the AI works, check the Forum: http://realai.freeforums.net/#category-3 \n\n";
-        outputView.setMovementMethod(LinkMovementMethod.getInstance());
-        outputView.setText(tips);
-        stopTimer();
+        ui.showTips(tips);
+        engine.stopTimer();
         isTipsMode = true;
     }
 
-    // ------------------------------------------------------------------------
-    // Close modes
-    // ------------------------------------------------------------------------
-
+    // ---- Mode close helpers ----
     private void closeWordFixMode() {
-        wordFixSpinner.setVisibility(View.GONE);
-        wordFixSpinner.setClickable(false);
-        wordFixSpinner.setFocusable(false);
-        wordFixTextView.setVisibility(View.GONE);
-        wordFixTextView.setClickable(false);
-        wordFixTextView.setFocusable(false);
-        wordFixTextView.setFocusableInTouchMode(false);
-        wordFixButton.setVisibility(View.GONE);
-        wordFixButton.setClickable(false);
-        wordFixButton.setFocusable(false);
-
-        outputView.setVisibility(View.VISIBLE);
-        inputView.setVisibility(View.VISIBLE);
-        menuButton.setText(R.string.menu_button);
-        menuButton.setVisibility(View.VISIBLE);
-        enableAdvancedUI(true);
-        outputView.post(this::scrollHistory);
-        showKeyboard();
+        ui.hideWordFixViews();
+        ui.setOutputVisible(true);
+        ui.setInputVisible(true);
+        ui.setMenuButton(getString(R.string.menu_button), true);
+        ui.setAdvancedUIEnabled(true);
+        ui.clearAndShowHistory(Data.getHistory());
+        ui.showKeyboard();
         isWordFixMode = false;
         isDelayMode = false;
         isResponsesMode = false;
-        startTimer();
+        engine.startTimer();
     }
 
     private void closeThoughtMode() {
-        inputView.setVisibility(View.VISIBLE);
-        menuButton.setText(R.string.menu_button);
-        menuButton.setVisibility(View.VISIBLE);
-        enableAdvancedUI(true);
-        outputView.post(this::scrollHistory);
-        showKeyboard();
+        ui.setInputVisible(true);
+        ui.setMenuButton(getString(R.string.menu_button), true);
+        ui.setAdvancedUIEnabled(true);
+        ui.clearAndShowHistory(Data.getHistory());
+        ui.showKeyboard();
         isThoughtMode = false;
-        startTimer();
+        engine.startTimer();
     }
 
     private void closeTipsMode() {
-        inputView.setVisibility(View.VISIBLE);
-        menuButton.setText(R.string.menu_button);
-        menuButton.setVisibility(View.VISIBLE);
-        enableAdvancedUI(true);
-        outputView.post(this::scrollHistory);
-        showKeyboard();
+        ui.setInputVisible(true);
+        ui.setMenuButton(getString(R.string.menu_button), true);
+        ui.setAdvancedUIEnabled(true);
+        ui.clearAndShowHistory(Data.getHistory());
+        ui.showKeyboard();
         isTipsMode = false;
-        startTimer();
-        startThinking();
+        engine.startTimer();
+        engine.startThinking();
     }
 
-    // ------------------------------------------------------------------------
-    // Async task for WordFix
-    // ------------------------------------------------------------------------
-
-    private class WordFixTask extends AsyncTask<Void, Void, Void> {
-        @Override
-        protected Void doInBackground(Void... params) {
-            List<WordData> words = Data.getWords();
-            String oldWord = words.get(wordFixSelection).getWord();
-            String newWord = wordFixTextView.getText().toString();
-
-            List<String> inputList = Data.getInputList();
-            for (int i = 0; i < inputList.size(); i++) {
-                String input = inputList.get(i);
-                List<String> outputs = Data.getAllOutputs(input);
-                for (int j = 0; j < outputs.size(); j++) {
-                    if (outputs.get(j).contains(oldWord)) {
-                        outputs.set(j, outputs.get(j).replace(oldWord, newWord));
-                    }
-                }
-                Data.saveOutput(outputs, input);
-                if (input.contains(oldWord)) {
-                    inputList.set(i, input.replace(oldWord, newWord));
-                }
-            }
-            Data.saveInputList(inputList);
-
-            List<String> allWords = new ArrayList<>();
-            for (WordData wd : words) allWords.add(wd.getWord());
-
-            for (String word : allWords) {
-                List<WordData> pre = Data.getPreWords(word);
-                for (WordData wd : pre) {
-                    if (wd.getWord().equals(oldWord)) {
-                        wd.setWord(newWord);
-                    }
-                }
-                Data.savePreWords(pre, word);
-
-                List<WordData> pro = Data.getProWords(word);
-                for (WordData wd : pro) {
-                    if (wd.getWord().equals(oldWord)) {
-                        wd.setWord(newWord);
-                    }
-                }
-                Data.saveProWords(pro, word);
-            }
-
-            words.get(wordFixSelection).setWord(newWord);
-            Data.saveWords(words);
-            return null;
-        }
-
-        @Override
-        protected void onPostExecute(Void result) {
-            closeWordFixMode();
-            Toast.makeText(MainActivity.this, "Word replaced.", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // Apply delay setting
-    // ------------------------------------------------------------------------
-
-    private void applyDelaySetting() {
-        if (delaySelection == 3) {
-            Data.setConfig("Infinite",
-                    String.valueOf(logic.isAdvanced()),
-                    String.valueOf(logic.isTopicBased()),
-                    String.valueOf(logic.isConditionBased()),
-                    String.valueOf(logic.isProceduralBased()),
-                    String.valueOf(logic.isSpeech()));
-            bl_DelayForever = true;
-            int_Time = 0;
-        } else {
-            int seconds = (delaySelection * 10) + 10;
-            Data.setConfig(seconds + " seconds",
-                    String.valueOf(logic.isAdvanced()),
-                    String.valueOf(logic.isTopicBased()),
-                    String.valueOf(logic.isConditionBased()),
-                    String.valueOf(logic.isProceduralBased()),
-                    String.valueOf(logic.isSpeech()));
-            bl_DelayForever = false;
-            int_Time = seconds * 1000;
-        }
-        closeWordFixMode();
-    }
-
-    // ------------------------------------------------------------------------
-    // Toggle response method
-    // ------------------------------------------------------------------------
-
-    private void toggleResponseMethod() {
-        if (responseSelection == 0) {
-            logic.setTopicBased(!logic.isTopicBased());
-            wordFixButton.setText(String.valueOf(logic.isTopicBased()));
-        } else if (responseSelection == 1) {
-            logic.setConditionBased(!logic.isConditionBased());
-            wordFixButton.setText(String.valueOf(logic.isConditionBased()));
-        } else if (responseSelection == 2) {
-            logic.setProceduralBased(!logic.isProceduralBased());
-            wordFixButton.setText(String.valueOf(logic.isProceduralBased()));
-        }
-        String delayStr = bl_DelayForever ? "Infinite" : "30 seconds";
-        Data.setConfig(delayStr,
-                String.valueOf(logic.isAdvanced()),
-                String.valueOf(logic.isTopicBased()),
-                String.valueOf(logic.isConditionBased()),
-                String.valueOf(logic.isProceduralBased()),
-                String.valueOf(logic.isSpeech()));
-    }
-
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
     // Confirm dialogs
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
 
-    private void confirmExit() {
-        stopTimer();
+    private void confirmExitDialog() {
+        engine.stopTimer();
         new AlertDialog.Builder(this)
                 .setTitle("System Message")
                 .setMessage("Exit the NLP Program?")
                 .setPositiveButton("Yes", (d, which) -> finishAffinity())
-                .setNegativeButton("No", (d, which) -> startTimer())
-                .setCancelable(false)
-                .show();
+                .setNegativeButton("No", (d, which) -> engine.startTimer())
+                .setCancelable(false).show();
     }
 
-    private void confirmErase() {
-        stopTimer();
+    private void confirmEraseDialog() {
+        engine.stopTimer();
         new AlertDialog.Builder(this)
                 .setTitle("System Message")
                 .setMessage("Erase all memory?")
                 .setPositiveButton("Yes", (d, which) -> {
                     Util.EraseMemory(brainDir);
-                    outputView.setText(EMPTY);
-                    inputView.setText(EMPTY);
+                    outputView.setText("");
+                    inputView.setText("");
                     createBrainDirectories();
-                    outputView.post(this::scrollHistory);
+                    ui.clearAndShowHistory(Data.getHistory());
                     Toast.makeText(this, "Brain erased.", Toast.LENGTH_SHORT).show();
                 })
-                .setNegativeButton("No", (d, which) -> startTimer())
-                .setCancelable(false)
-                .show();
+                .setNegativeButton("No", (d, which) -> engine.startTimer())
+                .setCancelable(false).show();
     }
 
-    // ------------------------------------------------------------------------
-    // AdapterView.OnItemSelectedListener
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Menu bridge
+    // ----------------------------------------------------------------
+
+    @Override public boolean onCreateOptionsMenu(Menu menu) { return menuDelegate.onCreateOptionsMenu(menu); }
+    @Override public boolean onPrepareOptionsMenu(Menu menu) { return menuDelegate.onPrepareOptionsMenu(menu); }
+    @Override public boolean onOptionsItemSelected(MenuItem item) { return menuDelegate.onOptionsItemSelected(item); }
+    @Override public boolean onMenuOpened(int featureId, Menu menu) { return menuDelegate.onMenuOpened(featureId, menu); }
+    @Override public void onPanelClosed(int featureId, Menu menu) { menuDelegate.onPanelClosed(featureId, menu); }
+
+    // ----------------------------------------------------------------
+    // MenuActions implementation
+    // ----------------------------------------------------------------
+
+    @Override public void confirmErase() { confirmEraseDialog(); }
+    @Override public void confirmExit() { confirmExitDialog(); }
+    @Override public void newSession() { NewSession(); }
+    @Override public void displayResponses() { displayResponsesMode(); }
+    @Override public void displayDelay() { displayDelayMode(); }
+    @Override public void displayWordFix() { displayWordFixMode(); }
+    @Override public void displayTips() { displayTipsMode(); }
+    @Override public void setThoughtMode(boolean v) { isThoughtMode = v; }
+    @Override public void setWordFixMode(boolean v) { isWordFixMode = v; }
+    @Override public void setDelayMode(boolean v) { isDelayMode = v; }
+    @Override public void setResponsesMode(boolean v) { isResponsesMode = v; }
+    @Override public void setTipsMode(boolean v) { isTipsMode = v; }
+    @Override public boolean isThoughtMode() { return isThoughtMode; }
+    @Override public boolean isTipsMode() { return isTipsMode; }
+    @Override public void scrollHistory() { ui.clearAndShowHistory(Data.getHistory()); ui.setFaceImage(R.drawable.face_neutral); }
+    @Override public void invalidateOptionsMenu() { super.invalidateOptionsMenu(); }
+
+    // ----------------------------------------------------------------
+    // Spinner listener
+    // ----------------------------------------------------------------
 
     @Override
     public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
         if (isWordFixMode) {
-            List<WordData> words = Data.getWords();
             wordFixSelection = position;
+            List<WordData> words = Data.getWords();
             if (position < words.size()) {
-                wordFixTextView.setText(words.get(position).getWord());
+                ui.updateWordFixText(words.get(position).getWord());
             }
         } else if (isDelayMode) {
-            delaySelection = position;
+            settings.setDelaySelection(position);
         } else if (isResponsesMode) {
-            responseSelection = position;
-            if (position == 0) wordFixButton.setText(String.valueOf(logic.isTopicBased()));
-            else if (position == 1) wordFixButton.setText(String.valueOf(logic.isConditionBased()));
-            else if (position == 2) wordFixButton.setText(String.valueOf(logic.isProceduralBased()));
+            settings.setResponseSelection(position);
+            wordFixButton.setText(settings.getResponseToggleText());
         }
     }
 
-    @Override
-    public void onNothingSelected(AdapterView<?> parent) {}
+    @Override public void onNothingSelected(AdapterView<?> parent) {}
 
-    // ------------------------------------------------------------------------
-    // TextToSpeech.OnInitListener
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // TTS
+    // ----------------------------------------------------------------
 
     @Override
     public void onInit(int status) {
-        if (status == TextToSpeech.SUCCESS) {
-            tts.setLanguage(Locale.US);
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // Press-effect touch listener
-    // ------------------------------------------------------------------------
-
-    private class PressEffectTouchListener implements View.OnTouchListener {
-        private final int imageRes;
-        private final Runnable pressStart;
-        private final Runnable pressEnd;
-        private final Handler handler = new Handler();
-        private final Runnable resetRunnable = new Runnable() {
-            @Override
-            public void run() {
-                if (isPressed) return;
-                handler.removeCallbacks(this);
-                faceImageView.setImageResource(R.drawable.face_neutral);
-            }
-        };
-        private boolean isPressed = false;
-
-        PressEffectTouchListener(int imageRes, Runnable pressStart, Runnable pressEnd) {
-            this.imageRes = imageRes;
-            this.pressStart = pressStart;
-            this.pressEnd = pressEnd;
-        }
-
-        @Override
-        public boolean onTouch(View v, MotionEvent event) {
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    faceImageView.setImageResource(imageRes);
-                    isPressed = true;
-                    pressStart.run();
-                    handler.postDelayed(resetRunnable, 250);
-                    break;
-                case MotionEvent.ACTION_UP:
-                    isPressed = false;
-                    pressEnd.run();
-                    handler.removeCallbacks(resetRunnable);
-                    handler.postDelayed(resetRunnable, 250);
-                    v.performClick();
-                    break;
-                case MotionEvent.ACTION_CANCEL:
-                    isPressed = false;
-                    pressEnd.run();
-                    handler.removeCallbacks(resetRunnable);
-                    faceImageView.setImageResource(R.drawable.face_neutral);
-                    break;
-            }
-            return true;
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // Load saved delay from config
-    // ------------------------------------------------------------------------
-
-    private void loadDelayFromConfig() {
-        String delayStr = Data.getDelay();
-        if (delayStr == null || delayStr.isEmpty()) {
-            return;
-        }
-        if (delayStr.equalsIgnoreCase("Infinite")) {
-            bl_DelayForever = true;
-            int_Time = 0;
-        } else {
-            bl_DelayForever = false;
-            try {
-                String numberPart = delayStr.replace(" seconds", "").trim();
-                int seconds = Integer.parseInt(numberPart);
-                int_Time = seconds * 1000;
-            } catch (NumberFormatException e) {
-                int_Time = 10000;
-            }
-        }
+        if (status == TextToSpeech.SUCCESS) tts.setLanguage(Locale.US);
     }
 }

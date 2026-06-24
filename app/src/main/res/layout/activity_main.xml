@@ -10,7 +10,7 @@
     android:layout_height="match_parent">
 
     <!-- Output (chat log) -->
-    <com.oblivionburn.nlp.LiteText
+    <com.oblivionburn.nlp.ui.LiteText
         android:id="@+id/txt_Output"
         android:scrollbarAlwaysDrawVerticalTrack="true"
         android:scrollbarStyle="insideInset"
@@ -33,7 +33,7 @@
         android:layout_alignParentRight="true"
         android:inputType="textMultiLine">
         <requestFocus />
-    </com.oblivionburn.nlp.LiteText>
+    </com.oblivionburn.nlp.ui.LiteText>
 
     <!-- Input row: text field + Send button -->
     <LinearLayout
@@ -45,7 +45,7 @@
         android:layout_alignParentLeft="true"
         android:layout_alignParentRight="true">
 
-        <com.oblivionburn.nlp.LiteText
+        <com.oblivionburn.nlp.ui.LiteText
             android:id="@+id/txt_Input"
             android:imeOptions="actionSend"
             android:inputType="text"
@@ -119,7 +119,7 @@
         android:onClick="onMenu"/>
 
     <!-- WordFix UI (hidden by default) -->
-    <com.oblivionburn.nlp.LiteText
+    <com.oblivionburn.nlp.ui.LiteText
         android:id="@+id/txt_WordFix"
         android:focusable="false"
         android:focusableInTouchMode="false"

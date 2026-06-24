@@ -1,4 +1,4 @@
-package com.oblivionburn.nlp;
+package com.oblivionburn.nlp.engine;
 
 import android.text.TextUtils;
 import android.util.Log;
@@ -9,25 +9,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-/**
- * Core NLP logic – refactored, with persistent memory and conversation context.
- * <p>
- * Features:
- * - Instance‑based (no static state)
- * - Statistical learning (word frequencies, pre/pro chains) – runs on EVERY input
- * - Semantic memory (name, age, location, likes) – stored in Memory.txt
- * - Conversation context (last 5 turns) – used to enrich topic selection
- * - Special query: "What did I just say?" – recalls last user turn
- * - Optional injection of user's name into greetings
- * - Thread‑safe (synchronized public methods)
- */
 public class Logic {
 
     private static final String TAG = "Logic";
     private static final String EMPTY = "";
     private static final int MAX_CONTEXT_SIZE = 5;
 
-    // ---- State ----
     private String lastResponse = EMPTY;
     private String lastResponseThinking = EMPTY;
 
@@ -46,21 +33,15 @@ public class Logic {
 
     private final Random random = new Random();
 
-    // ---- Constructor ----
-    public Logic() {
-        // initialise if needed
-    }
+    public Logic() {}
 
-    // ------------------------------------------------------------------------
-    // Public API (thread‑safe)
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Public API
+    // ----------------------------------------------------------------
 
     public synchronized String prepInputAndRespond(String rawInput) {
         String[] tokens = prepInput(rawInput);
-        if (tokens == null || tokens.length == 0) {
-            return EMPTY;
-        }
-        // This automatically runs memory + learning + context
+        if (tokens == null || tokens.length == 0) return EMPTY;
         return respond(tokens, rawInput);
     }
 
@@ -72,54 +53,56 @@ public class Logic {
         return thinkInternal(tokens);
     }
 
-    // ---- Getters / Setters for flags (used by UI) ----
+    /** Generates an idle response WITHOUT affecting lastResponse or lastResponseThinking. */
+    public synchronized String idleRespond() {
+        String seed = getRandomWord();
+        String response = generateResponse(seed);
+        String finalResponse = Util.RulesCheck(response);
+        if (finalResponse == null || finalResponse.isEmpty()) return EMPTY;
+        return finalResponse;
+    }
+
+    // ---- State getters/setters ----
     public boolean isInitiation() { return initiation; }
-    public void setInitiation(boolean initiation) { this.initiation = initiation; }
+    public void setInitiation(boolean v) { initiation = v; }
     public boolean isNewInput() { return newInput; }
-    public void setNewInput(boolean newInput) { this.newInput = newInput; }
+    public void setNewInput(boolean v) { newInput = v; }
     public boolean isUserInput() { return userInput; }
-    public void setUserInput(boolean userInput) { this.userInput = userInput; }
+    public void setUserInput(boolean v) { userInput = v; }
     public boolean isAdvanced() { return advanced; }
-    public void setAdvanced(boolean advanced) { this.advanced = advanced; }
+    public void setAdvanced(boolean v) { advanced = v; }
     public boolean isTopicBased() { return topicBased; }
-    public void setTopicBased(boolean topicBased) { this.topicBased = topicBased; }
+    public void setTopicBased(boolean v) { topicBased = v; }
     public boolean isConditionBased() { return conditionBased; }
-    public void setConditionBased(boolean conditionBased) { this.conditionBased = conditionBased; }
+    public void setConditionBased(boolean v) { conditionBased = v; }
     public boolean isProceduralBased() { return proceduralBased; }
-    public void setProceduralBased(boolean proceduralBased) { this.proceduralBased = proceduralBased; }
+    public void setProceduralBased(boolean v) { proceduralBased = v; }
     public boolean isSpeech() { return speech; }
-    public void setSpeech(boolean speech) { this.speech = speech; }
+    public void setSpeech(boolean v) { speech = v; }
     public String getLastResponse() { return lastResponse; }
     public String getLastResponseThinking() { return lastResponseThinking; }
     public List<String> getTopics() { return topics; }
     public List<String> getTopicsThinking() { return topicsThinking; }
 
-    // ------------------------------------------------------------------------
-    // Core: respond() – hybrid memory + statistical learning + context
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Core response generation
+    // ----------------------------------------------------------------
 
     public String respond(String[] currentTokens, String rawInput) {
-        // ---- 1. Update conversation context with user input ----
         conversationContext.add("User: " + rawInput);
-        if (conversationContext.size() > MAX_CONTEXT_SIZE) {
-            conversationContext.remove(0);
-        }
+        if (conversationContext.size() > MAX_CONTEXT_SIZE) conversationContext.remove(0);
 
-        // ---- 2. Handle special queries (must happen before fact detection) ----
+        // Special queries
         String specialResponse = handleSpecialQueries(rawInput);
         if (specialResponse != null) {
             String finalSpecial = Util.RulesCheck(specialResponse);
             conversationContext.add("AI: " + finalSpecial);
-            if (conversationContext.size() > MAX_CONTEXT_SIZE) {
-                conversationContext.remove(0);
-            }
+            if (conversationContext.size() > MAX_CONTEXT_SIZE) conversationContext.remove(0);
             return finalSpecial;
         }
 
-        // ---- 3. Semantic Memory: fact queries and storage ----
+        // Semantic memory
         String memoryResponse = null;
-
-        // 3a. Check if user is asking about a stored fact
         String queryKey = Util.detectFactQuery(rawInput);
         if (queryKey != null) {
             String value = Data.getMemory(queryKey);
@@ -129,8 +112,6 @@ public class Logic {
                 memoryResponse = "I don't know that yet. Tell me and I'll remember.";
             }
         }
-
-        // 3b. Check if user is telling us a new fact
         String fact = Util.extractFact(rawInput);
         if (fact != null) {
             String[] parts = fact.split("\\|");
@@ -140,30 +121,24 @@ public class Logic {
             }
         }
 
-        // ---- 4. ALWAYS run statistical learning on the CURRENT input ----
-        // This updates word frequencies, pre‑words, pro‑words – regardless of memory.
+        // Always learn from user input
         if (currentTokens != null && currentTokens.length > 0) {
             updateDataStructures(currentTokens);
         }
 
-        // ---- 5. If we have a memory response, return it now (override) ----
-        // The statistical learning still happened, so the AI gets smarter in the background.
         if (memoryResponse != null) {
             String finalMem = Util.RulesCheck(memoryResponse);
             conversationContext.add("AI: " + finalMem);
-            if (conversationContext.size() > MAX_CONTEXT_SIZE) {
-                conversationContext.remove(0);
-            }
+            if (conversationContext.size() > MAX_CONTEXT_SIZE) conversationContext.remove(0);
             lastResponse = finalMem;
             newInput = true;
             return finalMem;
         }
 
-        // ---- 6. Build enriched tokens from conversation context for topic selection ----
-        // This gives the AI "awareness" of what was just discussed.
+        // Context enrichment
         String[] enrichedTokens = buildEnrichedTokens(currentTokens);
 
-        // ---- 7. Update topics using enriched tokens ----
+        // Topic update
         if (userInput) {
             topics.clear();
             topics.addAll(Util.GenTopics(enrichedTokens, new ArrayList<>()));
@@ -173,92 +148,70 @@ public class Logic {
             topics.add(getRandomWord());
         }
 
-        if (topics.isEmpty()) {
-            return EMPTY;
-        }
+        if (topics.isEmpty()) return EMPTY;
 
-        // ---- 8. Generate response (statistical) ----
+        // Response generation
         StringBuilder response = new StringBuilder();
         boolean usedTopic = false;
 
         if (advanced) {
             String topic = topics.get(random.nextInt(topics.size()));
             response.append(generateResponse(topic));
-            if (initiation && response.toString().equals(topic)) {
-                topics.clear();
-            }
+            if (initiation && response.toString().equals(topic)) topics.clear();
         } else {
-            // Topic‑based
             if (topicBased) {
                 List<String> related = Util.Get_TopicRelated(topics);
                 if (!related.isEmpty()) {
                     response.append(related.get(random.nextInt(related.size())));
                     usedTopic = true;
-                    if (initiation && Util.RulesCheck(response.toString())
-                            .equals(Util.Get_FirstPhrase(lastResponse))) {
+                    if (initiation && Util.RulesCheck(response.toString()).equals(Util.Get_FirstPhrase(lastResponse))) {
                         topics.clear();
                         usedTopic = false;
                     }
                 }
             }
-
-            // Condition‑based (fallback)
             if (!usedTopic && conditionBased) {
                 String fixedInput = Util.PunctuationFix_ForInput(rawInput);
                 List<String> noRelated = Data.getOutputList_NoRelated(fixedInput);
                 if (!noRelated.isEmpty()) {
                     response.append(noRelated.get(random.nextInt(noRelated.size())));
                     usedTopic = true;
-                    if (initiation && Util.RulesCheck(response.toString())
-                            .equals(Util.Get_FirstPhrase(lastResponse))) {
+                    if (initiation && Util.RulesCheck(response.toString()).equals(Util.Get_FirstPhrase(lastResponse))) {
                         topics.clear();
                         usedTopic = false;
                     }
                 }
             }
-
-            // Procedural‑based (last resort)
             if (!usedTopic && proceduralBased) {
                 String topic = topics.isEmpty() ? getRandomWord() : topics.get(random.nextInt(topics.size()));
                 response.append(generateResponse(topic));
-                if (initiation && Util.RulesCheck(response.toString())
-                        .equals(Util.Get_FirstPhrase(lastResponse))) {
+                if (initiation && Util.RulesCheck(response.toString()).equals(Util.Get_FirstPhrase(lastResponse))) {
                     topics.clear();
                 }
             }
         }
 
-        // ---- 9. Append phrase‑related words ----
         String currentResponse = response.toString();
         List<String> phraseRelated = Util.Get_PhraseRelated(currentResponse);
         for (String phrase : phraseRelated) {
-            if (!phrase.equals(currentResponse)) {
-                response.append(" ").append(phrase);
-            }
+            if (!phrase.equals(currentResponse)) response.append(" ").append(phrase);
         }
 
-        // ---- 10. Finalise response ----
         String finalResponse = Util.RulesCheck(response.toString());
-        if (finalResponse.isEmpty()) {
-            return EMPTY;
-        }
+        if (finalResponse.isEmpty()) return EMPTY;
 
-        // ---- 11. Inject memory (e.g., user's name into greetings) ----
         finalResponse = injectMemory(finalResponse);
 
-        // ---- 12. Save to context and state ----
         conversationContext.add("AI: " + finalResponse);
-        if (conversationContext.size() > MAX_CONTEXT_SIZE) {
-            conversationContext.remove(0);
-        }
+        if (conversationContext.size() > MAX_CONTEXT_SIZE) conversationContext.remove(0);
         lastResponse = finalResponse;
         newInput = true;
         return finalResponse;
     }
 
-    // ------------------------------------------------------------------------
-    // Special query handler ("What did I just say?")
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Special queries
+    // ----------------------------------------------------------------
 
     private String handleSpecialQueries(String input) {
         if (input == null) return null;
@@ -266,7 +219,6 @@ public class Logic {
         if (lower.matches(".*what did i (just )?say.*") ||
             lower.matches(".*what was i (talking about|saying).*")) {
             if (conversationContext.size() >= 2) {
-                // Last user turn is at index size-2 (since size-1 is current input)
                 String lastUser = conversationContext.get(conversationContext.size() - 2);
                 if (lastUser.startsWith("User: ")) {
                     return "You just said: " + lastUser.substring(6);
@@ -280,24 +232,21 @@ public class Logic {
         return null;
     }
 
-    // ------------------------------------------------------------------------
-    // Context enrichment for topic selection
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Context enrichment
+    // ----------------------------------------------------------------
 
     private String[] buildEnrichedTokens(String[] currentTokens) {
-        // Build a string from the conversation context (last 3 turns to avoid overload)
         StringBuilder contextBuilder = new StringBuilder();
         int start = Math.max(0, conversationContext.size() - 3);
         for (int i = start; i < conversationContext.size(); i++) {
             String turn = conversationContext.get(i);
-            // Remove "User: " and "AI: " prefixes to get raw text
             String clean = turn.replaceFirst("^(User|AI): ", "");
             contextBuilder.append(clean).append(" ");
         }
         String contextString = contextBuilder.toString();
         String[] contextTokens = prepInput(contextString);
 
-        // Merge: current tokens first, then context tokens (deduplicated)
         List<String> merged = new ArrayList<>();
         if (currentTokens != null) {
             for (String t : currentTokens) merged.add(t);
@@ -310,26 +259,24 @@ public class Logic {
         return merged.toArray(new String[0]);
     }
 
-    // ------------------------------------------------------------------------
-    // Optional: inject user's name into greetings
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Memory injection into greetings
+    // ----------------------------------------------------------------
 
     private String injectMemory(String response) {
         if (response == null || response.isEmpty()) return response;
-        // Only if the response is a greeting or contains a greeting
         if (response.toLowerCase().matches(".*\\b(hello|hi|hey|greetings)\\b.*")) {
             String name = Data.getMemory("user_name");
             if (name != null && !response.contains(name)) {
-                // Insert name after the first greeting word
                 return response.replaceFirst("(?i)\\b(hello|hi|hey|greetings)\\b", "$0 " + name);
             }
         }
         return response;
     }
 
-    // ------------------------------------------------------------------------
-    // Thinking (unchanged from previous refactor)
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Thinking (does NOT change lastResponseThinking)
+    // ----------------------------------------------------------------
 
     private String thinkInternal(String[] tokens) {
         StringBuilder response = new StringBuilder();
@@ -366,29 +313,22 @@ public class Logic {
         String current = response.toString();
         List<String> phraseRelated = Util.Get_PhraseRelated(current);
         for (String phrase : phraseRelated) {
-            if (!phrase.equals(current)) {
-                response.append(" ").append(phrase);
-            }
+            if (!phrase.equals(current)) response.append(" ").append(phrase);
         }
 
         String finalResponse = Util.RulesCheck(response.toString());
-        lastResponseThinking = finalResponse;
         return finalResponse.isEmpty() ? EMPTY : finalResponse;
     }
 
-    // ------------------------------------------------------------------------
-    // Tokeniser (prepInput) – unchanged from refactor
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Tokeniser
+    // ----------------------------------------------------------------
 
     public String[] prepInput(String input) {
-        if (TextUtils.isEmpty(input)) {
-            return new String[0];
-        }
+        if (TextUtils.isEmpty(input)) return new String[0];
 
         List<String> charList = new ArrayList<>();
-        for (char c : input.toCharArray()) {
-            charList.add(Character.toString(c));
-        }
+        for (char c : input.toCharArray()) charList.add(Character.toString(c));
 
         String[] illegal = {"|", "\\", "*", "<", "\"", ":", ">", "#"};
         for (int i = 0; i < charList.size(); i++) {
@@ -418,19 +358,13 @@ public class Logic {
                         charList.set(i, " .");
                     }
                     break;
-                default:
-                    break;
             }
         }
 
         StringBuilder sb = new StringBuilder();
-        for (String ch : charList) {
-            sb.append(ch);
-        }
+        for (String ch : charList) sb.append(ch);
         String trimmed = sb.toString().trim();
-        if (TextUtils.isEmpty(trimmed)) {
-            return new String[0];
-        }
+        if (TextUtils.isEmpty(trimmed)) return new String[0];
 
         String[] rawTokens = trimmed.split(" ");
         for (int i = 0; i < rawTokens.length; i++) {
@@ -439,19 +373,16 @@ public class Logic {
         return rawTokens;
     }
 
-    // ------------------------------------------------------------------------
-    // Batched statistical update (frequencies + pre/pro)
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Statistical learning
+    // ----------------------------------------------------------------
 
     private void updateDataStructures(String[] tokens) {
         if (tokens == null || tokens.length == 0) return;
 
-        // 1. Update word frequencies and add new words
         List<WordData> allWords = Data.getWords();
         Map<String, WordData> wordMap = new HashMap<>();
-        for (WordData wd : allWords) {
-            wordMap.put(wd.getWord(), wd);
-        }
+        for (WordData wd : allWords) wordMap.put(wd.getWord(), wd);
 
         for (String token : tokens) {
             WordData existing = wordMap.get(token);
@@ -467,7 +398,6 @@ public class Logic {
         }
         Data.saveWords(allWords);
 
-        // 2. Update pre‑word and pro‑word adjacency (batched)
         Map<String, List<WordData>> preUpdates = new HashMap<>();
         Map<String, List<WordData>> proUpdates = new HashMap<>();
 
@@ -507,9 +437,9 @@ public class Logic {
         return list;
     }
 
-    // ------------------------------------------------------------------------
-    // Response generator (Markov chain walk)
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Markov chain generator
+    // ----------------------------------------------------------------
 
     private String generateResponse(String seed) {
         String leftResult = seed;
@@ -518,32 +448,22 @@ public class Logic {
 
         while (continueLeft) {
             List<WordData> preWords = Data.getPreWords(leftResult);
-            if (preWords.isEmpty()) {
-                continueLeft = false;
-                break;
-            }
+            if (preWords.isEmpty()) { continueLeft = false; break; }
 
             List<String> candidates = new ArrayList<>();
             List<Integer> weights = new ArrayList<>();
             for (WordData wd : preWords) {
-                int freq = wd.getFrequency();
-                if (freq > 0) {
+                if (wd.getFrequency() > 0) {
                     candidates.add(wd.getWord());
-                    weights.add(freq);
+                    weights.add(wd.getFrequency());
                 }
             }
-
-            if (weights.isEmpty()) {
-                continueLeft = false;
-                break;
-            }
+            if (weights.isEmpty()) { continueLeft = false; break; }
 
             int chosenWeight = choose(weights);
             List<Integer> indices = new ArrayList<>();
             for (int i = 0; i < weights.size(); i++) {
-                if (weights.get(i).intValue() == chosenWeight) {
-                    indices.add(i);
-                }
+                if (weights.get(i).intValue() == chosenWeight) indices.add(i);
             }
             String chosen = candidates.get(indices.get(random.nextInt(indices.size())));
 
@@ -554,14 +474,9 @@ public class Logic {
 
             boolean duplicate = false;
             for (String word : leftBuilt.split(" ")) {
-                if (Util.PunctuationFix_ForInput(word).equals(chosen)) {
-                    duplicate = true;
-                    break;
-                }
+                if (Util.PunctuationFix_ForInput(word).equals(chosen)) { duplicate = true; break; }
             }
-            if (!duplicate) {
-                leftBuilt = chosen + " " + leftBuilt;
-            }
+            if (!duplicate) leftBuilt = chosen + " " + leftBuilt;
             leftResult = chosen;
         }
 
@@ -571,56 +486,38 @@ public class Logic {
 
         while (continueRight) {
             List<WordData> proWords = Data.getProWords(rightResult);
-            if (proWords.isEmpty()) {
-                continueRight = false;
-                break;
-            }
+            if (proWords.isEmpty()) { continueRight = false; break; }
 
             List<String> candidates = new ArrayList<>();
             List<Integer> weights = new ArrayList<>();
             for (WordData wd : proWords) {
-                int freq = wd.getFrequency();
-                if (freq > 0) {
+                if (wd.getFrequency() > 0) {
                     candidates.add(wd.getWord());
-                    weights.add(freq);
+                    weights.add(wd.getFrequency());
                 }
             }
-
-            if (weights.isEmpty()) {
-                continueRight = false;
-                break;
-            }
+            if (weights.isEmpty()) { continueRight = false; break; }
 
             int chosenWeight = choose(weights);
             List<Integer> indices = new ArrayList<>();
             for (int i = 0; i < weights.size(); i++) {
-                if (weights.get(i).intValue() == chosenWeight) {
-                    indices.add(i);
-                }
+                if (weights.get(i).intValue() == chosenWeight) indices.add(i);
             }
             String chosen = candidates.get(indices.get(random.nextInt(indices.size())));
 
             boolean duplicate = false;
             for (String word : rightBuilt.split(" ")) {
-                if (Util.PunctuationFix_ForInput(word).equals(chosen)) {
-                    duplicate = true;
-                    break;
-                }
+                if (Util.PunctuationFix_ForInput(word).equals(chosen)) { duplicate = true; break; }
             }
-
             if (!duplicate) {
                 rightBuilt = rightBuilt + " " + chosen;
-                if (chosen.equals(".") || chosen.equals("$") || chosen.equals("!")) {
-                    break;
-                }
+                if (chosen.equals(".") || chosen.equals("$") || chosen.equals("!")) break;
             }
             rightResult = chosen;
         }
 
         return rightBuilt.trim();
     }
-
-    // ---- Helpers ----
 
     private int choose(List<Integer> weights) {
         int total = 0;
