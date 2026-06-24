@@ -704,4 +704,8 @@ public final class Util {
     public static void init(Logic logic) {
         logicRef = logic;
     }
+
+    public static Logic getLogic() {
+        return logicRef;
+    }
 }

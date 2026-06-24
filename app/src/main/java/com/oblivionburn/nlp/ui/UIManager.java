@@ -1,6 +1,5 @@
 package com.oblivionburn.nlp.ui;
 
-import com.oblivionburn.nlp.R;
 import android.app.Activity;
 import android.content.Context;
 import android.text.method.LinkMovementMethod;
@@ -21,7 +20,6 @@ public class UIManager {
     private final LiteText wordFixTextView;
     private final Spinner wordFixSpinner;
     private final Button wordFixButton;
-    private final Button menuButton;
     private final Button encourageButton;
     private final Button discourageButton;
     private final ImageView faceImageView;
@@ -32,7 +30,6 @@ public class UIManager {
                      LiteText wordFixTextView,
                      Spinner wordFixSpinner,
                      Button wordFixButton,
-                     Button menuButton,
                      Button encourageButton,
                      Button discourageButton,
                      ImageView faceImageView) {
@@ -42,7 +39,6 @@ public class UIManager {
         this.wordFixTextView = wordFixTextView;
         this.wordFixSpinner = wordFixSpinner;
         this.wordFixButton = wordFixButton;
-        this.menuButton = menuButton;
         this.encourageButton = encourageButton;
         this.discourageButton = discourageButton;
         this.faceImageView = faceImageView;
@@ -77,7 +73,7 @@ public class UIManager {
         faceImageView.setImageResource(resId);
     }
 
-    // ---- Advanced UI ----
+    // ---- Advanced UI (Encourage / Discourage / Face) ----
     public void setAdvancedUIEnabled(boolean enabled) {
         int vis = enabled ? View.VISIBLE : View.INVISIBLE;
         encourageButton.setVisibility(vis);
@@ -90,7 +86,7 @@ public class UIManager {
         if (enabled) faceImageView.setImageResource(R.drawable.face_neutral);
     }
 
-    // ----WordFix----
+    // ---- WordFix helpers ----
     public String getWordFixText() {
         return wordFixTextView.getText().toString();
     }
@@ -109,12 +105,6 @@ public class UIManager {
     public void hideKeyboard() {
         InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) imm.hideSoftInputFromWindow(inputView.getWindowToken(), 0);
-    }
-
-    // ---- Menu button ----
-    public void setMenuButton(String text, boolean visible) {
-        menuButton.setText(text);
-        menuButton.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
     }
 
     // ---- Input/output visibility ----

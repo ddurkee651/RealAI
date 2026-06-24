@@ -1,7 +1,9 @@
+```java
 package com.oblivionburn.nlp;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -10,7 +12,6 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.view.KeyEvent;
-import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
@@ -20,14 +21,19 @@ import android.widget.ImageView;
 import android.widget.Spinner;
 import android.widget.Toast;
 
+import androidx.appcompat.app.ActionBarDrawerToggle;
+import androidx.drawerlayout.widget.DrawerLayout;
+
+import com.google.android.material.navigation.NavigationView;
 import com.oblivionburn.nlp.engine.ConversationEngine;
 import com.oblivionburn.nlp.engine.Data;
 import com.oblivionburn.nlp.engine.Logic;
 import com.oblivionburn.nlp.engine.SettingsManager;
 import com.oblivionburn.nlp.engine.Util;
 import com.oblivionburn.nlp.engine.WordData;
-import com.oblivionburn.nlp.menu.MenuActions;
-import com.oblivionburn.nlp.menu.MenuDelegate;
+import com.oblivionburn.nlp.engine.neural.AlienMind;
+import com.oblivionburn.nlp.engine.neural.Tokenizer;
+import com.oblivionburn.nlp.ui.KnowledgeUploadActivity;
 import com.oblivionburn.nlp.ui.LiteText;
 import com.oblivionburn.nlp.ui.PressEffectTouchListener;
 import com.oblivionburn.nlp.ui.UIManager;
@@ -39,12 +45,11 @@ import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity
-        implements AdapterView.OnItemSelectedListener, TextToSpeech.OnInitListener, MenuActions {
+        implements AdapterView.OnItemSelectedListener, TextToSpeech.OnInitListener {
 
     private static final String TAG = "REALAI";
 
     private UIManager ui;
-    private MenuDelegate menuDelegate;
     private WordFixManager wordFixManager;
     private SettingsManager settings;
 
@@ -56,15 +61,18 @@ public class MainActivity extends Activity
     private boolean isWordFixMode = false;
     private boolean isDelayMode = false;
     private boolean isResponsesMode = false;
-    private boolean isTipsMode = false;
 
     private int wordFixSelection = 0;
 
     private Logic logic;
+    private AlienMind brain;
     private TextToSpeech tts;
     private ConversationEngine engine;
     private File brainDir;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    private DrawerLayout drawerLayout;
+    private ActionBarDrawerToggle drawerToggle;
 
     // ----------------------------------------------------------------
     // Lifecycle
@@ -81,7 +89,6 @@ public class MainActivity extends Activity
         outputView = findViewById(R.id.txt_Output);
         outputView.setMaxLines(Integer.MAX_VALUE);
         inputView = findViewById(R.id.txt_Input);
-        Button menuButton = findViewById(R.id.btn_Menu);
         Button encourageButton = findViewById(R.id.btn_Encourage);
         Button discourageButton = findViewById(R.id.btn_Discourage);
         wordFixButton = findViewById(R.id.btn_WordFix);
@@ -90,7 +97,7 @@ public class MainActivity extends Activity
         ImageView faceImageView = findViewById(R.id.img_Face);
 
         ui = new UIManager(this, outputView, inputView, wordFixTextView,
-                wordFixSpinner, wordFixButton, menuButton, encourageButton,
+                wordFixSpinner, wordFixButton, encourageButton,
                 discourageButton, faceImageView);
         wordFixSpinner.setOnItemSelectedListener(this);
 
@@ -98,13 +105,27 @@ public class MainActivity extends Activity
         logic = new Logic();
         Util.init(logic);
 
+        // Neural brain setup
+        Tokenizer tokenizer = new Tokenizer();
+        brain = new AlienMind(tokenizer);
+        File brainFile = new File(getExternalFilesDir(null), "alien_brain.dat");
+        File vocabFile = new File(getExternalFilesDir(null), "alien_vocab.txt");
+        if (brainFile.exists() && vocabFile.exists()) {
+            try {
+                tokenizer.loadVocab(vocabFile);
+                brain.load(brainFile);
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to load brain", e);
+            }
+        }
+        logic.setBrain(brain);
+
         tts = new TextToSpeech(getApplicationContext(), this);
 
         engine = new ConversationEngine(mainHandler, logic, tts,
                 this::scrollHistory,
                 line -> { ui.appendOutputLine(line); ui.setFaceImage(R.drawable.face_neutral); });
 
-        menuDelegate = new MenuDelegate(this, ui, logic, engine);
         wordFixManager = new WordFixManager(this, ui);
         settings = new SettingsManager(logic, ui);
         settings.loadDelayFromConfig();
@@ -112,10 +133,21 @@ public class MainActivity extends Activity
         createBrainDirectories();
         setupListeners();
 
+        // Drawer
+        drawerLayout = findViewById(R.id.drawer_layout);
+        NavigationView navView = findViewById(R.id.nav_view);
+        navView.setNavigationItemSelectedListener(this::onNavigationItemSelected);
+        drawerToggle = new ActionBarDrawerToggle(this, drawerLayout, R.string.app_name, R.string.app_name);
+        drawerLayout.addDrawerListener(drawerToggle);
+
         engine.startTimer();
         engine.startThinking();
+    }
 
-        displayTipsMode();
+    @Override
+    protected void onPostCreate(Bundle savedInstanceState) {
+        super.onPostCreate(savedInstanceState);
+        drawerToggle.syncState();
     }
 
     @Override
@@ -132,6 +164,16 @@ public class MainActivity extends Activity
         engine.stopThinking();
         mainHandler.removeCallbacksAndMessages(null);
         if (tts != null) { tts.stop(); tts.shutdown(); }
+        if (brain != null) {
+            try {
+                File brainFile = new File(getExternalFilesDir(null), "alien_brain.dat");
+                File vocabFile = new File(getExternalFilesDir(null), "alien_vocab.txt");
+                brain.getTokenizer().saveVocab(vocabFile);
+                brain.save(brainFile);
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to save brain", e);
+            }
+        }
         super.onDestroy();
     }
 
@@ -139,8 +181,79 @@ public class MainActivity extends Activity
     public void onBackPressed() {
         if (isThoughtMode) closeThoughtMode();
         else if (isWordFixMode || isDelayMode || isResponsesMode) closeWordFixMode();
-        else if (isTipsMode) closeTipsMode();
+        else if (drawerLayout.isDrawerOpen(findViewById(R.id.nav_view))) drawerLayout.closeDrawers();
         else confirmExitDialog();
+    }
+
+    // ----------------------------------------------------------------
+    // Drawer
+    // ----------------------------------------------------------------
+
+    private boolean onNavigationItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        drawerLayout.closeDrawers();
+
+        if (id == R.id.nav_new_session) {
+            NewSession();
+        } else if (id == R.id.nav_upload_knowledge) {
+            startActivity(new Intent(this, KnowledgeUploadActivity.class));
+        } else if (id == R.id.nav_word_fix) {
+            displayWordFixMode();
+        } else if (id == R.id.nav_view_thinking) {
+            item.setChecked(!item.isChecked());
+            isThoughtMode = item.isChecked();
+            if (isThoughtMode) {
+                engine.stopTimer();
+                engine.startThinking();
+            } else {
+                engine.startTimer();
+            }
+        } else if (id == R.id.nav_settings) {
+            showSettingsDialog();
+        } else if (id == R.id.nav_erase_brain) {
+            confirmEraseDialog();
+        } else if (id == R.id.nav_exit) {
+            confirmExitDialog();
+        }
+        return true;
+    }
+
+    public void onDrawerToggle(View view) {
+        if (drawerLayout.isDrawerOpen(findViewById(R.id.nav_view))) {
+            drawerLayout.closeDrawers();
+        } else {
+            drawerLayout.openDrawer(findViewById(R.id.nav_view));
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Settings dialog (Delay + Speech only)
+    // ----------------------------------------------------------------
+
+    private void showSettingsDialog() {
+        String[] delays = {"10 seconds", "20 seconds", "30 seconds", "Infinite"};
+        int checkedDelay = settings.getDelaySelection();
+        boolean speechOn = logic.isSpeech();
+
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Settings")
+                .setSingleChoiceItems(delays, checkedDelay, (dialog, which) -> {
+                    settings.setDelaySelection(which);
+                    settings.applyDelaySetting();
+                })
+                .setPositiveButton(speechOn ? "Speech: OFF" : "Speech: ON", (dialog, which) -> {
+                    logic.setSpeech(!logic.isSpeech());
+                    // re‑save config with new speech state
+                    String delayStr = ConversationEngine.bl_DelayForever ? "Infinite" : (ConversationEngine.int_Time / 1000) + " seconds";
+                    Data.setConfig(delayStr,
+                            String.valueOf(logic.isAdvanced()),
+                            String.valueOf(logic.isTopicBased()),
+                            String.valueOf(logic.isConditionBased()),
+                            String.valueOf(logic.isProceduralBased()),
+                            String.valueOf(logic.isSpeech()));
+                })
+                .setNegativeButton("Close", null)
+                .show();
     }
 
     // ----------------------------------------------------------------
@@ -199,24 +312,21 @@ public class MainActivity extends Activity
     }
 
     // ----------------------------------------------------------------
+    // UI callback
+    // ----------------------------------------------------------------
+
+    private void scrollHistory() {
+        ui.clearAndShowHistory(Data.getHistory());
+        ui.setFaceImage(R.drawable.face_neutral);
+    }
+
+    // ----------------------------------------------------------------
     // Button handlers
     // ----------------------------------------------------------------
 
     public void onSend(View view) {
         engine.processUserInput(inputView.getText().toString());
         inputView.setText("");
-    }
-
-    public void onMenu(View view) {
-        if (isWordFixMode || isDelayMode || isResponsesMode) {
-            closeWordFixMode();
-        } else if (isThoughtMode) {
-            closeThoughtMode();
-        } else if (isTipsMode) {
-            closeTipsMode();
-        } else {
-            openOptionsMenu();
-        }
     }
 
     public void WordFix(View view) {
@@ -233,23 +343,16 @@ public class MainActivity extends Activity
     }
 
     public void Encourage(View view) {
-        Util.CleanMemory(this);
-        Util.Encourage();
-        refreshAfterSessionAction();
+        logic.encourageResponse();
+        ui.setFaceImage(R.drawable.face_encourage);
+        mainHandler.postDelayed(() -> ui.setFaceImage(R.drawable.face_neutral), 500);
     }
 
     public void Discourage(View view) {
-        Util.CleanMemory(this);
-        Util.Discourage();
-        refreshAfterSessionAction();
-    }
-
-    private void refreshAfterSessionAction() {
-        List<String> history = Data.getHistory();
-        history.add("---New Session---");
-        Data.saveHistory(history);
-        ui.clearAndShowHistory(history);
-        logic.setNewInput(false);
+        logic.discourageResponse();
+        ui.setFaceImage(R.drawable.face_discourage);
+        mainHandler.postDelayed(() -> ui.setFaceImage(R.drawable.face_neutral), 500);
+        NewSession();
     }
 
     public void NewSession() {
@@ -259,14 +362,13 @@ public class MainActivity extends Activity
         Data.saveHistory(history);
         Util.CleanMemory(this);
         ui.setInputVisible(true);
-        ui.setMenuButton(getString(R.string.menu_button), true);
         ui.setAdvancedUIEnabled(true);
         ui.clearAndShowHistory(history);
         ui.showKeyboard();
     }
 
     // ----------------------------------------------------------------
-    // Mode display helpers
+    // Mode helpers
     // ----------------------------------------------------------------
 
     private void displayWordFixMode() {
@@ -275,51 +377,10 @@ public class MainActivity extends Activity
         isWordFixMode = true;
     }
 
-    private void displayDelayMode() {
-        String[] options = {"10 seconds", "20 seconds", "30 seconds", "Infinite"};
-        ui.setSpinnerItems(options, settings.getDelaySelection());
-        ui.showWordFixButtonOnly(getString(R.string.btn_accept));
-        engine.stopTimer();
-        isDelayMode = true;
-    }
-
-    private void displayResponsesMode() {
-        ui.setMenuButton(getString(R.string.ok_button), true);
-        String[] options = {"Topic Response Method", "Condition Response Method", "Procedural Response Method"};
-        ui.setSpinnerItems(options, settings.getResponseSelection());
-        ui.showWordFixButtonOnly(settings.getResponseToggleText());
-        engine.stopTimer();
-        isResponsesMode = true;
-    }
-
-    private void displayTipsMode() {
-        ui.setInputVisible(false);
-        ui.setMenuButton(getString(R.string.ok_button), true);
-        ui.setAdvancedUIEnabled(false);
-        String tips = "Here are some tips for teaching the AI: \n\n" +
-                "1. The AI learns from observing how you respond to what it says... so, if it says \"Hello.\" and you say \"How are you?\" it will learn that \"How are you?\" is a possible response to \"Hello.\". If you say something it has never seen before, it will repeat it to see how -you- would respond to it. Learning by imitation, like a young child, is not the only way it learns as you will soon discover.\n\n" +
-                "2. It will generate stuff that sounds nonsensical early on... this is part of the learning process, similar to the way children phrase things in ways that don't quite make sense early on. \n\n" +
-                "3. If it says something that doesn't make sense, you can discourage the AI by pressing the Discourage button. This will also reset the session so that whatever you say next won't be considered a response to what was last said. \n\n" +
-                "4. In contrast to Discouraging the AI, there is a button to Encourage it and let it know it has used words properly. \n\n" +
-                "5. Limit your response to a single sentence or question. \n\n" +
-                "6. Use complete sentences when responding. Start with a capital letter and end with a punctuation mark. \n\n" +
-                "7. Avoid contractions (use \"it is\" instead of \"it's\"). \n\n" +
-                "8. The AI runs in real-time and will try to initiate conversation on its own if idle for too long. To adjust how long it waits before assuming you're idle, or to make it never check for idleness, check out the Set Delay option in the Menu. \n\n" +
-                "9. The AI cannot see/hear/taste/smell/feel any 'things' you refer to, so it can never have any contextual understanding of what exactly the 'thing' is (the way you understand it). This also means it'll never understand you trying to reference it (or yourself) directly, as it can never have a concept of anything external being something different from it without spatial recognition gained from sight/touch/sound. \n\n" +
-                "10. In general... keep it simple. The simpler you speak to it, the better it learns. \n\n" +
-                "For help, check Discord: https://discord.gg/s894BGn \n\n" +
-                "For more information and details of how the AI works, check the Forum: http://realai.freeforums.net/#category-3 \n\n";
-        ui.showTips(tips);
-        engine.stopTimer();
-        isTipsMode = true;
-    }
-
-    // ---- Mode close helpers ----
     private void closeWordFixMode() {
         ui.hideWordFixViews();
         ui.setOutputVisible(true);
         ui.setInputVisible(true);
-        ui.setMenuButton(getString(R.string.menu_button), true);
         ui.setAdvancedUIEnabled(true);
         ui.clearAndShowHistory(Data.getHistory());
         ui.showKeyboard();
@@ -331,23 +392,11 @@ public class MainActivity extends Activity
 
     private void closeThoughtMode() {
         ui.setInputVisible(true);
-        ui.setMenuButton(getString(R.string.menu_button), true);
         ui.setAdvancedUIEnabled(true);
         ui.clearAndShowHistory(Data.getHistory());
         ui.showKeyboard();
         isThoughtMode = false;
         engine.startTimer();
-    }
-
-    private void closeTipsMode() {
-        ui.setInputVisible(true);
-        ui.setMenuButton(getString(R.string.menu_button), true);
-        ui.setAdvancedUIEnabled(true);
-        ui.clearAndShowHistory(Data.getHistory());
-        ui.showKeyboard();
-        isTipsMode = false;
-        engine.startTimer();
-        engine.startThinking();
     }
 
     // ----------------------------------------------------------------
@@ -356,9 +405,9 @@ public class MainActivity extends Activity
 
     private void confirmExitDialog() {
         engine.stopTimer();
-        new AlertDialog.Builder(this)
-                .setTitle("System Message")
-                .setMessage("Exit the NLP Program?")
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Exit")
+                .setMessage("Exit RealAI?")
                 .setPositiveButton("Yes", (d, which) -> finishAffinity())
                 .setNegativeButton("No", (d, which) -> engine.startTimer())
                 .setCancelable(false).show();
@@ -366,9 +415,9 @@ public class MainActivity extends Activity
 
     private void confirmEraseDialog() {
         engine.stopTimer();
-        new AlertDialog.Builder(this)
-                .setTitle("System Message")
-                .setMessage("Erase all memory?")
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Erase Brain")
+                .setMessage("Erase all learned knowledge?")
                 .setPositiveButton("Yes", (d, which) -> {
                     Util.EraseMemory(brainDir);
                     outputView.setText("");
@@ -376,47 +425,11 @@ public class MainActivity extends Activity
                     createBrainDirectories();
                     ui.clearAndShowHistory(Data.getHistory());
                     Toast.makeText(this, "Brain erased.", Toast.LENGTH_SHORT).show();
+                    engine.startTimer();
                 })
                 .setNegativeButton("No", (d, which) -> engine.startTimer())
                 .setCancelable(false).show();
     }
-
-    // ----------------------------------------------------------------
-    // Menu bridge
-    // ----------------------------------------------------------------
-
-    @Override public boolean onCreateOptionsMenu(Menu menu) { return menuDelegate.onCreateOptionsMenu(menu); }
-    @Override public boolean onPrepareOptionsMenu(Menu menu) { return menuDelegate.onPrepareOptionsMenu(menu); }
-    @Override public boolean onOptionsItemSelected(MenuItem item) { return menuDelegate.onOptionsItemSelected(item); }
-    @Override public boolean onMenuOpened(int featureId, Menu menu) { return menuDelegate.onMenuOpened(featureId, menu); }
-    @Override public void onPanelClosed(int featureId, Menu menu) { menuDelegate.onPanelClosed(featureId, menu); }
-
-    // ----------------------------------------------------------------
-    // MenuActions implementation
-    // ----------------------------------------------------------------
-
-    @Override public void confirmErase() { confirmEraseDialog(); }
-    @Override public void confirmExit() { confirmExitDialog(); }
-    @Override public void newSession() { NewSession(); }
-    @Override public void displayResponses() { displayResponsesMode(); }
-    @Override public void displayDelay() { displayDelayMode(); }
-    @Override public void displayWordFix() { displayWordFixMode(); }
-    @Override public void displayTips() { displayTipsMode(); }
-    @Override public void setThoughtMode(boolean v) { isThoughtMode = v; }
-    @Override public void setWordFixMode(boolean v) { isWordFixMode = v; }
-    @Override public void setDelayMode(boolean v) { isDelayMode = v; }
-    @Override public void setResponsesMode(boolean v) { isResponsesMode = v; }
-    @Override public void setTipsMode(boolean v) { isTipsMode = v; }
-    @Override public boolean isThoughtMode() { return isThoughtMode; }
-    @Override public boolean isTipsMode() { return isTipsMode; }
-
-    @Override
-    public void scrollHistory() {
-        ui.clearAndShowHistory(Data.getHistory());
-        ui.setFaceImage(R.drawable.face_neutral);
-    }
-
-    @Override public void invalidateOptionsMenu() { super.invalidateOptionsMenu(); }
 
     // ----------------------------------------------------------------
     // Spinner listener
@@ -449,3 +462,4 @@ public class MainActivity extends Activity
         if (status == TextToSpeech.SUCCESS) tts.setLanguage(Locale.US);
     }
 }
+```

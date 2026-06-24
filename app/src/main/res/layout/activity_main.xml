@@ -1,163 +1,181 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.drawerlayout.widget.DrawerLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:paddingLeft="@dimen/activity_horizontal_margin"
-    android:paddingTop="@dimen/activity_vertical_margin"
-    android:paddingRight="@dimen/activity_horizontal_margin"
-    android:paddingBottom="@dimen/activity_vertical_margin"
-    android:scrollbars="vertical"
+    android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Output (chat log) -->
-    <com.oblivionburn.nlp.ui.LiteText
-        android:id="@+id/txt_Output"
-        android:scrollbarAlwaysDrawVerticalTrack="true"
-        android:scrollbarStyle="insideInset"
-        android:gravity="top"
-        android:autoLink="web"
-        android:linksClickable="true"
-        android:focusable="false"
-        android:focusableInTouchMode="false"
-        android:scrollbars="vertical"
-        android:longClickable="false"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:ems="10"
-        android:scrollHorizontally="false"
-        android:selectAllOnFocus="false"
-        android:freezesText="false"
-        android:layout_above="@+id/input_row"
-        android:layout_alignParentLeft="true"
-        android:layout_alignParentTop="true"
-        android:layout_alignParentRight="true"
-        android:inputType="textMultiLine">
-        <requestFocus />
-    </com.oblivionburn.nlp.ui.LiteText>
-
-    <!-- Input row: text field + Send button -->
-    <LinearLayout
-        android:id="@+id/input_row"
+    <!-- Main chat -->
+    <RelativeLayout
+        android:paddingLeft="@dimen/activity_horizontal_margin"
+        android:paddingTop="@dimen/activity_vertical_margin"
+        android:paddingRight="@dimen/activity_horizontal_margin"
+        android:paddingBottom="@dimen/activity_vertical_margin"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_above="@+id/btn_Discourage"
-        android:layout_alignParentLeft="true"
-        android:layout_alignParentRight="true">
+        android:layout_height="match_parent"
+        android:background="@color/background_dark">
 
         <com.oblivionburn.nlp.ui.LiteText
-            android:id="@+id/txt_Input"
-            android:imeOptions="actionSend"
-            android:inputType="text"
+            android:id="@+id/txt_Output"
+            android:scrollbarAlwaysDrawVerticalTrack="true"
+            android:scrollbarStyle="insideInset"
+            android:gravity="top"
+            android:autoLink="web"
+            android:linksClickable="true"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:scrollbars="vertical"
             android:longClickable="false"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ems="10" />
-
-        <Button
-            android:id="@+id/btn_Send"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Send"
-            android:onClick="onSend" />
-    </LinearLayout>
+            android:ems="10"
+            android:scrollHorizontally="false"
+            android:selectAllOnFocus="false"
+            android:freezesText="false"
+            android:textColor="@color/text_light"
+            android:layout_above="@+id/input_row"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentRight="true"
+            android:inputType="textMultiLine">
+            <requestFocus />
+        </com.oblivionburn.nlp.ui.LiteText>
 
-    <!-- Discourage button -->
-    <Button
-        android:textSize="12sp"
-        android:id="@+id/btn_Discourage"
-        android:visibility="invisible"
+        <LinearLayout
+            android:id="@+id/input_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_above="@+id/btn_Discourage"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentRight="true">
+
+            <com.oblivionburn.nlp.ui.LiteText
+                android:id="@+id/txt_Input"
+                android:imeOptions="actionSend"
+                android:inputType="text"
+                android:longClickable="false"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ems="10"
+                android:textColor="@color/text_light"
+                android:backgroundTint="@color/text_light"/>
+
+            <Button
+                android:id="@+id/btn_Send"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Send"
+                android:onClick="onSend" />
+        </LinearLayout>
+
+        <Button
+            android:textSize="12sp"
+            android:id="@+id/btn_Discourage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/discourage"
+            android:layout_toLeftOf="@+id/btn_WordFix"
+            android:layout_above="@+id/bottom_buttons"
+            android:layout_alignParentLeft="true"
+            android:onClick="Discourage"/>
+
+        <ImageView
+            android:id="@+id/img_Face"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_toLeftOf="@+id/btn_Encourage"
+            android:layout_toRightOf="@+id/btn_Discourage"
+            android:layout_above="@+id/bottom_buttons"
+            app:srcCompat="@drawable/face_neutral"/>
+
+        <Button
+            android:textSize="12sp"
+            android:id="@+id/btn_Encourage"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:clickable="false"
+            android:longClickable="false"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/encourage"
+            android:layout_toRightOf="@+id/btn_WordFix"
+            android:layout_above="@+id/bottom_buttons"
+            android:layout_alignParentRight="true"
+            android:onClick="Encourage"/>
+
+        <LinearLayout
+            android:id="@+id/bottom_buttons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_alignParentBottom="true"
+            android:gravity="center">
+
+            <Button
+                android:id="@+id/btn_DrawerToggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="☰"
+                android:textSize="18sp"
+                android:onClick="onDrawerToggle"/>
+        </LinearLayout>
+
+        <com.oblivionburn.nlp.ui.LiteText
+            android:id="@+id/txt_WordFix"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:visibility="invisible"
+            android:clickable="false"
+            android:longClickable="false"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/sp_WordFix"
+            android:layout_alignLeft="@+id/txt_Output"
+            android:layout_alignRight="@+id/txt_Output"
+            android:inputType="text"
+            android:textColor="@color/text_light"/>
+
+        <Button
+            android:id="@+id/btn_WordFix"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:visibility="invisible"
+            android:clickable="false"
+            android:longClickable="false"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_accept"
+            android:layout_below="@+id/txt_WordFix"
+            android:layout_centerHorizontal="true"
+            android:onClick="WordFix"/>
+
+        <Spinner
+            android:id="@+id/sp_WordFix"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:visibility="invisible"
+            android:clickable="false"
+            android:longClickable="false"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="84dp"
+            android:layout_alignLeft="@+id/txt_Output"
+            android:layout_alignTop="@+id/txt_Output"/>
+    </RelativeLayout>
+
+    <!-- Drawer -->
+    <com.google.android.material.navigation.NavigationView
+        android:id="@+id/nav_view"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/discourage"
-        android:layout_toLeftOf="@+id/btn_WordFix"
-        android:layout_above="@+id/btn_Menu"
-        android:layout_alignParentLeft="true"
-        android:onClick="Discourage"/>
-
-    <!-- Face image -->
-    <ImageView
-        android:id="@+id/img_Face"
-        android:visibility="invisible"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_toLeftOf="@+id/btn_Encourage"
-        android:layout_toRightOf="@+id/btn_Discourage"
-        android:layout_above="@+id/btn_Menu"
-        app:srcCompat="@drawable/face_neutral"/>
-
-    <!-- Encourage button -->
-    <Button
-        android:textSize="12sp"
-        android:id="@+id/btn_Encourage"
-        android:focusable="false"
-        android:focusableInTouchMode="false"
-        android:visibility="invisible"
-        android:clickable="false"
-        android:longClickable="false"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/encourage"
-        android:layout_toRightOf="@+id/btn_WordFix"
-        android:layout_above="@+id/btn_Menu"
-        android:layout_alignParentRight="true"
-        android:onClick="Encourage"/>
-
-    <!-- Menu button -->
-    <Button
-        android:textSize="12sp"
-        android:id="@+id/btn_Menu"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/menu_button"
-        android:layout_alignLeft="@+id/txt_Input"
-        android:layout_alignRight="@+id/txt_Input"
-        android:layout_alignParentLeft="true"
-        android:layout_alignParentRight="true"
-        android:layout_alignParentBottom="true"
-        android:onClick="onMenu"/>
-
-    <!-- WordFix UI (hidden by default) -->
-    <com.oblivionburn.nlp.ui.LiteText
-        android:id="@+id/txt_WordFix"
-        android:focusable="false"
-        android:focusableInTouchMode="false"
-        android:visibility="invisible"
-        android:clickable="false"
-        android:longClickable="false"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_below="@+id/sp_WordFix"
-        android:layout_alignLeft="@+id/txt_Output"
-        android:layout_alignRight="@+id/txt_Output"
-        android:inputType="text"/>
-
-    <Button
-        android:id="@+id/btn_WordFix"
-        android:focusable="false"
-        android:focusableInTouchMode="false"
-        android:visibility="invisible"
-        android:clickable="false"
-        android:longClickable="false"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/btn_accept"
-        android:layout_below="@+id/txt_WordFix"
-        android:layout_centerHorizontal="true"
-        android:onClick="WordFix"/>
-
-    <Spinner
-        android:id="@+id/sp_WordFix"
-        android:focusable="false"
-        android:focusableInTouchMode="false"
-        android:visibility="invisible"
-        android:clickable="false"
-        android:longClickable="false"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="84dp"
-        android:layout_alignLeft="@+id/txt_Output"
-        android:layout_alignTop="@+id/txt_Output"/>
-
-</RelativeLayout>
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:fitsSystemWindows="true"
+        android:background="@color/surface_dark"
+        app:menu="@menu/drawer_menu"
+        app:headerLayout="@layout/drawer_header"
+        app:itemTextColor="@color/text_light"
+        app:itemIconTint="@color/text_light"/>
+</androidx.drawerlayout.widget.DrawerLayout>
