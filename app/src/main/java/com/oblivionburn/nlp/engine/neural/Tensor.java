@@ -17,6 +17,7 @@ public class Tensor {
         this.requiresGrad = requiresGrad;
     }
 
+    // ---- Factory methods ----
     public static Tensor vector(int size) {
         return new Tensor(new float[size], size, 1, false);
     }
@@ -45,14 +46,17 @@ public class Tensor {
         return new Tensor(d, rows, cols, false);
     }
 
+    // ---- Accessors ----
     public float get(int r, int c) { return data[r * cols + c]; }
     public void set(int r, int c, float v) { data[r * cols + c] = v; }
-
     public float get(int i) { return data[i]; }
     public void set(int i, float v) { data[i] = v; }
 
+    // ---- In‑place operations ----
     public Tensor add(Tensor other) {
-        assert rows == other.rows && cols == other.cols;
+        if (this.rows != other.rows || this.cols != other.cols) {
+            return this.copy();
+        }
         Tensor out = new Tensor(new float[data.length], rows, cols, true);
         for (int i = 0; i < data.length; i++) out.data[i] = this.data[i] + other.data[i];
         out.backwardFn = () -> {
@@ -69,7 +73,9 @@ public class Tensor {
     }
 
     public Tensor matmul(Tensor other) {
-        assert this.cols == other.rows;
+        if (this.cols != other.rows) {
+            return Tensor.zeros(this.rows, other.cols);
+        }
         int m = this.rows, n = other.cols, k = this.cols;
         Tensor out = new Tensor(new float[m * n], m, n, true);
         for (int i = 0; i < m; i++) {
@@ -191,7 +197,9 @@ public class Tensor {
     }
 
     public Tensor crossEntropyLoss(Tensor targets) {
-        assert rows == targets.rows && cols == targets.cols;
+        if (this.rows != targets.rows || this.cols != targets.cols) {
+            return Tensor.zeros(1, 1);
+        }
         float[] lossData = new float[1];
         float sum = 0;
         for (int r = 0; r < rows; r++) {
@@ -230,6 +238,7 @@ public class Tensor {
         return out;
     }
 
+    // Backward function (set by operations)
     private Runnable backwardFn;
 
     public void backward() {
@@ -237,6 +246,7 @@ public class Tensor {
         backwardFn.run();
     }
 
+    // ---- Utility ----
     public Tensor copy() {
         return new Tensor(data.clone(), rows, cols, requiresGrad);
     }

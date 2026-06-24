@@ -64,7 +64,7 @@ public class AlienMind {
 
     private Tensor forward(int[] tokenIds) {
         int seqLen = Math.min(tokenIds.length, maxSeqLen);
-        int vocabSize = tokenizer.getVocabSize();
+        if (seqLen == 0) seqLen = 1;
 
         Tensor x = embedding.forward(tokenIds);
         for (int i = 0; i < seqLen; i++) {
@@ -125,18 +125,10 @@ public class AlienMind {
         return lossVal;
     }
 
-    /**
-     * Repeat training on the same sentence to reinforce it.
-     */
     public void reinforce(String sentence, int times) {
-        for (int i = 0; i < times; i++) {
-            trainOnSentence(sentence);
-        }
+        for (int i = 0; i < times; i++) trainOnSentence(sentence);
     }
 
-    /**
-     * Run gradient ASCENT on the sentence to make it less likely.
-     */
     public void penalize(String sentence) {
         if (sentence == null || sentence.trim().isEmpty()) return;
 
@@ -172,7 +164,6 @@ public class AlienMind {
                 float g = param.grad.data[j];
                 mt.data[j] = beta1 * mt.data[j] + (1 - beta1) * g;
                 vt.data[j] = beta2 * vt.data[j] + (1 - beta2) * g * g;
-                // ADD gradient to move away from this sentence
                 param.data[j] += lr_t * mt.data[j] / ((float) Math.sqrt(vt.data[j]) + eps);
             }
             param.zeroGrad();
@@ -180,7 +171,17 @@ public class AlienMind {
     }
 
     public String generate(String context, int maxLen) {
-        int[] ids = context.isEmpty() ? new int[]{Tokenizer.START_ID} : tokenizer.encode(context, false);
+        if (context == null) context = "";
+        String trimmed = context.trim();
+
+        int[] ids;
+        if (trimmed.isEmpty()) {
+            ids = new int[]{Tokenizer.START_ID};
+        } else {
+            ids = tokenizer.encode(trimmed, false);
+            if (ids.length == 0) ids = new int[]{Tokenizer.START_ID};
+        }
+
         if (ids.length > maxSeqLen) {
             int[] trunc = new int[maxSeqLen];
             System.arraycopy(ids, ids.length - maxSeqLen, trunc, 0, maxSeqLen);
