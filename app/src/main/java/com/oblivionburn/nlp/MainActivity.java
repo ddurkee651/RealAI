@@ -1,4 +1,3 @@
-```java
 package com.oblivionburn.nlp;
 
 import android.app.Activity;
