@@ -20,7 +20,6 @@ import android.widget.ImageView;
 import android.widget.Spinner;
 import android.widget.Toast;
 
-import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.google.android.material.navigation.NavigationView;
@@ -37,6 +36,7 @@ import com.oblivionburn.nlp.ui.LiteText;
 import com.oblivionburn.nlp.ui.PressEffectTouchListener;
 import com.oblivionburn.nlp.ui.UIManager;
 import com.oblivionburn.nlp.ui.WordFixManager;
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader;
 
 import java.io.File;
 import java.io.IOException;
@@ -71,15 +71,18 @@ public class MainActivity extends Activity
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private DrawerLayout drawerLayout;
-    private ActionBarDrawerToggle drawerToggle;
-
-    // ----------------------------------------------------------------
-    // Lifecycle
-    // ----------------------------------------------------------------
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // PDFBox init – safe wrapper
+        try {
+            PDFBoxResourceLoader.init(getApplicationContext());
+        } catch (Exception e) {
+            Log.e(TAG, "PDFBox init failed", e);
+        }
+
         setRequestedOrientation(1);
         setContentView(R.layout.activity_main);
 
@@ -104,7 +107,6 @@ public class MainActivity extends Activity
         logic = new Logic();
         Util.init(logic);
 
-        // Neural brain setup
         Tokenizer tokenizer = new Tokenizer();
         brain = new AlienMind(tokenizer);
         File brainFile = new File(getExternalFilesDir(null), "alien_brain.dat");
@@ -132,21 +134,15 @@ public class MainActivity extends Activity
         createBrainDirectories();
         setupListeners();
 
-        // Drawer
         drawerLayout = findViewById(R.id.drawer_layout);
         NavigationView navView = findViewById(R.id.nav_view);
         navView.setNavigationItemSelectedListener(this::onNavigationItemSelected);
-        drawerToggle = new ActionBarDrawerToggle(this, drawerLayout, R.string.app_name, R.string.app_name);
-        drawerLayout.addDrawerListener(drawerToggle);
 
-        engine.startTimer();
-        engine.startThinking();
-    }
-
-    @Override
-    protected void onPostCreate(Bundle savedInstanceState) {
-        super.onPostCreate(savedInstanceState);
-        drawerToggle.syncState();
+        // Start thinking after a short delay to avoid any init race
+        mainHandler.postDelayed(() -> {
+            engine.startTimer();
+            engine.startThinking();
+        }, 500);
     }
 
     @Override
@@ -183,10 +179,6 @@ public class MainActivity extends Activity
         else if (drawerLayout.isDrawerOpen(findViewById(R.id.nav_view))) drawerLayout.closeDrawers();
         else confirmExitDialog();
     }
-
-    // ----------------------------------------------------------------
-    // Drawer
-    // ----------------------------------------------------------------
 
     private boolean onNavigationItemSelected(MenuItem item) {
         int id = item.getItemId();
@@ -225,10 +217,6 @@ public class MainActivity extends Activity
         }
     }
 
-    // ----------------------------------------------------------------
-    // Settings dialog (Delay + Speech only)
-    // ----------------------------------------------------------------
-
     private void showSettingsDialog() {
         String[] delays = {"10 seconds", "20 seconds", "30 seconds", "Infinite"};
         int checkedDelay = settings.getDelaySelection();
@@ -242,7 +230,6 @@ public class MainActivity extends Activity
                 })
                 .setPositiveButton(speechOn ? "Speech: OFF" : "Speech: ON", (dialog, which) -> {
                     logic.setSpeech(!logic.isSpeech());
-                    // re‑save config with new speech state
                     String delayStr = ConversationEngine.bl_DelayForever ? "Infinite" : (ConversationEngine.int_Time / 1000) + " seconds";
                     Data.setConfig(delayStr,
                             String.valueOf(logic.isAdvanced()),
@@ -254,10 +241,6 @@ public class MainActivity extends Activity
                 .setNegativeButton("Close", null)
                 .show();
     }
-
-    // ----------------------------------------------------------------
-    // Initialisation helpers
-    // ----------------------------------------------------------------
 
     private void createBrainDirectories() {
         if (!brainDir.exists()) brainDir.mkdirs();
@@ -310,18 +293,10 @@ public class MainActivity extends Activity
                         findViewById(R.id.img_Face)));
     }
 
-    // ----------------------------------------------------------------
-    // UI callback
-    // ----------------------------------------------------------------
-
     private void scrollHistory() {
         ui.clearAndShowHistory(Data.getHistory());
         ui.setFaceImage(R.drawable.face_neutral);
     }
-
-    // ----------------------------------------------------------------
-    // Button handlers
-    // ----------------------------------------------------------------
 
     public void onSend(View view) {
         engine.processUserInput(inputView.getText().toString());
@@ -366,10 +341,6 @@ public class MainActivity extends Activity
         ui.showKeyboard();
     }
 
-    // ----------------------------------------------------------------
-    // Mode helpers
-    // ----------------------------------------------------------------
-
     private void displayWordFixMode() {
         wordFixManager.showWordFix(wordFixSelection);
         engine.stopTimer();
@@ -397,10 +368,6 @@ public class MainActivity extends Activity
         isThoughtMode = false;
         engine.startTimer();
     }
-
-    // ----------------------------------------------------------------
-    // Confirm dialogs
-    // ----------------------------------------------------------------
 
     private void confirmExitDialog() {
         engine.stopTimer();
@@ -430,10 +397,6 @@ public class MainActivity extends Activity
                 .setCancelable(false).show();
     }
 
-    // ----------------------------------------------------------------
-    // Spinner listener
-    // ----------------------------------------------------------------
-
     @Override
     public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
         if (isWordFixMode) {
@@ -451,10 +414,6 @@ public class MainActivity extends Activity
     }
 
     @Override public void onNothingSelected(AdapterView<?> parent) {}
-
-    // ----------------------------------------------------------------
-    // TTS
-    // ----------------------------------------------------------------
 
     @Override
     public void onInit(int status) {
