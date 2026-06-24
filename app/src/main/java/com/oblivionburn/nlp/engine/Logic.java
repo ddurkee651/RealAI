@@ -1,6 +1,7 @@
 package com.oblivionburn.nlp.engine;
 
 import android.text.TextUtils;
+import android.util.Log;
 
 import com.oblivionburn.nlp.engine.neural.AlienMind;
 
@@ -52,15 +53,25 @@ public class Logic {
 
     public synchronized String think(String rawInput) {
         if (mind == null) return EMPTY;
-        return mind.generate(rawInput, 20);
+        try {
+            return mind.generate(rawInput, 20);
+        } catch (Exception e) {
+            Log.e("Logic", "think error", e);
+            return EMPTY;
+        }
     }
 
     public synchronized String idleRespond() {
         if (mind == null) return EMPTY;
-        return mind.generate("", 15);
+        try {
+            return mind.generate("", 15);
+        } catch (Exception e) {
+            Log.e("Logic", "idleRespond error", e);
+            return EMPTY;
+        }
     }
 
-    // ---- State getters/setters ----
+    // ---- State getters/setters (unchanged) ----
     public boolean isInitiation() { return initiation; }
     public void setInitiation(boolean v) { initiation = v; }
     public boolean isNewInput() { return newInput; }
@@ -83,7 +94,7 @@ public class Logic {
     public List<String> getTopicsThinking() { return topicsThinking; }
 
     // ----------------------------------------------------------------
-    // Core response generation (now neural)
+    // Core response generation (crash‑proof)
     // ----------------------------------------------------------------
 
     public String respond(String[] currentTokens, String rawInput) {
@@ -92,7 +103,7 @@ public class Logic {
         conversationContext.add("User: " + rawInput);
         if (conversationContext.size() > MAX_CONTEXT_SIZE) conversationContext.remove(0);
 
-        // Special queries
+        // Special queries (unchanged)
         String specialResponse = handleSpecialQueries(rawInput);
         if (specialResponse != null) {
             String finalSpecial = Util.RulesCheck(specialResponse);
@@ -101,7 +112,7 @@ public class Logic {
             return finalSpecial;
         }
 
-        // Semantic memory
+        // Semantic memory (unchanged)
         String memoryResponse = null;
         String queryKey = Util.detectFactQuery(rawInput);
         if (queryKey != null) {
@@ -121,8 +132,12 @@ public class Logic {
             }
         }
 
-        // Neural learning from user input
-        mind.trainOnSentence(rawInput);
+        // Neural learning – protected
+        try {
+            mind.trainOnSentence(rawInput);
+        } catch (Exception e) {
+            Log.e("Logic", "trainOnSentence failed", e);
+        }
 
         if (memoryResponse != null) {
             String finalMem = Util.RulesCheck(memoryResponse);
@@ -133,17 +148,18 @@ public class Logic {
             return finalMem;
         }
 
-        // Build context string for generation
         String context = buildContextString(rawInput);
-
-        // Generate response
-        String generated = mind.generate(context, 30);
-        if (generated.isEmpty()) {
-            generated = mind.generate("", 15);   // fallback
+        String generated;
+        try {
+            generated = mind.generate(context, 30);
+            if (generated.isEmpty()) generated = mind.generate("", 15);
+        } catch (Exception e) {
+            Log.e("Logic", "generate failed", e);
+            generated = "[I'm learning... say that again?]";
         }
 
         String finalResponse = Util.RulesCheck(generated);
-        if (finalResponse.isEmpty()) return EMPTY;
+        if (finalResponse.isEmpty()) finalResponse = "Hello.";
 
         finalResponse = injectMemory(finalResponse);
 
@@ -154,21 +170,15 @@ public class Logic {
         return finalResponse;
     }
 
-    /**
-     * Reinforce the last response (Encourage button).
-     */
     public void encourageResponse() {
         if (mind != null && lastResponse != null && !lastResponse.isEmpty()) {
-            mind.reinforce(lastResponse, 3);   // train 3 times on it
+            try { mind.reinforce(lastResponse, 3); } catch (Exception e) { Log.e("Logic", "encourage failed", e); }
         }
     }
 
-    /**
-     * Penalise the last response (Discourage button).
-     */
     public void discourageResponse() {
         if (mind != null && lastResponse != null && !lastResponse.isEmpty()) {
-            mind.penalize(lastResponse);
+            try { mind.penalize(lastResponse); } catch (Exception e) { Log.e("Logic", "discourage failed", e); }
         }
     }
 
@@ -192,7 +202,6 @@ public class Logic {
         return null;
     }
 
-    // ---- Context building ----
     private String buildContextString(String latestUserInput) {
         StringBuilder sb = new StringBuilder();
         int start = Math.max(0, conversationContext.size() - 3);
@@ -205,7 +214,6 @@ public class Logic {
         return sb.toString().trim();
     }
 
-    // ---- Memory injection into greetings (unchanged) ----
     private String injectMemory(String response) {
         if (response == null || response.isEmpty()) return response;
         if (response.toLowerCase().matches(".*\\b(hello|hi|hey|greetings)\\b.*")) {
@@ -217,9 +225,6 @@ public class Logic {
         return response;
     }
 
-    // ----------------------------------------------------------------
-    // Tokeniser (unchanged)
-    // ----------------------------------------------------------------
     public String[] prepInput(String input) {
         if (TextUtils.isEmpty(input)) return new String[0];
         List<String> charList = new ArrayList<>();
@@ -257,8 +262,9 @@ public class Logic {
         return rawTokens;
     }
 
-    // ---- Public learning method for external use (KnowledgeInjector) ----
     public void learnFromSentence(String sentence) {
-        if (mind != null) mind.trainOnSentence(sentence);
+        if (mind != null) {
+            try { mind.trainOnSentence(sentence); } catch (Exception e) { Log.e("Logic", "learnFromSentence failed", e); }
+        }
     }
 }

@@ -2,6 +2,8 @@ package com.oblivionburn.nlp.engine;
 
 import android.os.Handler;
 import android.speech.tts.TextToSpeech;
+import android.util.Log;
+
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -33,7 +35,6 @@ public class ConversationEngine {
         this.onIdleResponse = onIdleResponse;
     }
 
-    // ---- Typing state ----
     public void setTyping(boolean typing) {
         isTyping = typing;
         if (typing) {
@@ -45,7 +46,6 @@ public class ConversationEngine {
         }
     }
 
-    // ---- User input ----
     public void processUserInput(String input) {
         if (input == null || input.isEmpty()) return;
 
@@ -56,7 +56,13 @@ public class ConversationEngine {
             List<String> history = Data.getHistory();
             String cleaned = Util.RulesCheck(input);
             history.add("User: " + cleaned);
-            String response = logic.respond(tokens, cleaned);
+            String response;
+            try {
+                response = logic.respond(tokens, cleaned);
+            } catch (Exception e) {
+                Log.e("ConversationEngine", "respond crashed", e);
+                response = "[brain error - please try again]";
+            }
             if (response != null && !response.isEmpty()) {
                 history.add("AI: " + response);
             }
@@ -68,20 +74,24 @@ public class ConversationEngine {
         }
     }
 
-    // ---- Idle response ----
     private void attentionSpan() {
         if (isTyping) return;
         logic.setNewInput(false);
         logic.setInitiation(true);
         logic.setUserInput(false);
-        String response = logic.idleRespond();
+        String response;
+        try {
+            response = logic.idleRespond();
+        } catch (Exception e) {
+            Log.e("ConversationEngine", "idleRespond crashed", e);
+            response = null;
+        }
         if (response != null && !response.isEmpty()) {
             if (onIdleResponse != null) onIdleResponse.accept("AI: " + response + "\n");
         }
         isBored = false;
     }
 
-    // ---- Timer ----
     public void startTimer() {
         if (timerRunnable == null) timerRunnable = new TimerRunnable();
         handler.removeCallbacks(timerRunnable);
@@ -93,7 +103,6 @@ public class ConversationEngine {
         if (timerRunnable != null) handler.removeCallbacks(timerRunnable);
     }
 
-    // ---- Thinking ----
     public void startThinking() {
         if (thoughtRunnable == null) thoughtRunnable = new ThoughtRunnable();
         handler.removeCallbacks(thoughtRunnable);
@@ -104,7 +113,6 @@ public class ConversationEngine {
         if (thoughtRunnable != null) handler.removeCallbacks(thoughtRunnable);
     }
 
-    // ---- Runnables ----
     private class TimerRunnable implements Runnable {
         @Override
         public void run() {
@@ -129,8 +137,14 @@ public class ConversationEngine {
         public void run() {
             logic.setUserInput(false);
             List<String> thoughts = Data.getThoughts();
-            String thought = logic.think(logic.getLastResponseThinking());
-            thought = Util.RulesCheck(thought);
+            String thought;
+            try {
+                thought = logic.think(logic.getLastResponseThinking());
+                thought = Util.RulesCheck(thought);
+            } catch (Exception e) {
+                Log.e("ConversationEngine", "think crashed", e);
+                thought = null;
+            }
             if (thought != null && !thought.isEmpty()) {
                 thoughts.add("NLP: " + thought);
                 Data.saveThoughts(thoughts);
