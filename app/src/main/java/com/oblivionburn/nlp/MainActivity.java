@@ -461,4 +461,3 @@ public class MainActivity extends Activity
         if (status == TextToSpeech.SUCCESS) tts.setLanguage(Locale.US);
     }
 }
-```
